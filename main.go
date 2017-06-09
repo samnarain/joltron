@@ -346,19 +346,18 @@ func run(net *jsonnet.Listener, dir string, args []string) error {
 		if launchErr == nil {
 			net.Broadcast(&outgoing.OutMsgUpdate{
 				Message: "gameClosed",
-				Payload: err.Error(),
 			})
 		} else {
 			switch launchErr.(type) {
 			case *exec.ExitError:
 				net.Broadcast(&outgoing.OutMsgUpdate{
 					Message: "gameCrashed",
-					Payload: err.Error(),
+					Payload: launchErr.Error(),
 				})
 			default:
 				net.Broadcast(&outgoing.OutMsgUpdate{
 					Message: "gameLaunchFailed",
-					Payload: err.Error(),
+					Payload: launchErr.Error(),
 				})
 			}
 		}
@@ -641,19 +640,18 @@ func run(net *jsonnet.Listener, dir string, args []string) error {
 							if launchErr == nil {
 								net.Broadcast(&outgoing.OutMsgUpdate{
 									Message: "gameClosed",
-									Payload: err.Error(),
 								})
 							} else {
 								switch launchErr.(type) {
 								case *exec.ExitError:
 									net.Broadcast(&outgoing.OutMsgUpdate{
 										Message: "gameCrashed",
-										Payload: err.Error(),
+										Payload: launchErr.Error(),
 									})
 								default:
 									net.Broadcast(&outgoing.OutMsgUpdate{
 										Message: "gameRelaunchFailed",
-										Payload: err.Error(),
+										Payload: launchErr.Error(),
 									})
 								}
 							}
