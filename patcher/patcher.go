@@ -520,12 +520,6 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 
 				p.manifest.LaunchOptions = p.manifest.PatchInfo.LaunchOptions
 
-				// TODO: do we need to set the os/arch cfrom the patch info?
-				// Since the os/arch on the manifest are the target we want to fetch,
-				// and the patch os/archc is the build's os/arch it shouldn't override them.
-				// p.manifest.OS = p.manifest.PatchInfo.OS
-				// p.manifest.Arch = p.manifest.PatchInfo.Arch
-
 				// Remove the patch info to signal the patch has finished and turn off the first installation flag so that next installations won't remove the game on cancellation.
 				p.manifest.IsFirstInstall = false
 				p.manifest.PatchInfo = nil
@@ -558,9 +552,10 @@ func NewUninstall(resumable *concurrency.Resumable, dir string, os2 OS.OS) (*Pat
 			func() error {
 				p.changeState(StatePreparing)
 
-				if err := p.readManifest(); err != nil {
-					return err
-				}
+				// This is skippable, we don't even read the manifest, damnit.
+				// if err := p.readManifest(); err != nil {
+				// 	return err
+				// }
 
 				return nil
 			},
@@ -672,12 +667,6 @@ func (p *Patch) handlePreviousPatch() error {
 		LaunchOptions: &data.LaunchOptions{
 			Executable: p.UpdateMetadata.Executable,
 		},
-
-		// We might not need to care about the update os/arch since
-		// we only care about the target os/arch which should not be overriden by
-		// the update metadata os/arch (because they are the build's os/arch)
-		// OS:         p.UpdateMetadata.OS,
-		// Arch:       p.UpdateMetadata.Arch,
 
 		OldBuildMetadata: p.UpdateMetadata.OldBuildMetadata,
 		NewBuildMetadata: p.UpdateMetadata.NewBuildMetadata,

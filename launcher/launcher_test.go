@@ -25,24 +25,18 @@ func TestMain(m *testing.M) {
 		gameFile = "eggnoggplus-win.tar.xz"
 		gameChecksum = "6fd1c12545b7b10c5777dea227526915"
 		launchOptions = &data.LaunchOptions{
-			OS:         "windows",
-			Arch:       "32",
 			Executable: "./eggnoggplus-win/eggnoggplus.exe",
 		}
 	case "linux":
 		gameFile = "eggnoggplus-linux-64.tar.xz"
 		gameChecksum = "f9ea1d46976519c30cbaa77656be73d8"
 		launchOptions = &data.LaunchOptions{
-			OS:         "linux",
-			Arch:       "64",
 			Executable: "./eggnoggplus-linux/eggnoggplus",
 		}
 	case "mac":
 		gameFile = "eggnoggplus-osx.tar.xz"
 		gameChecksum = "bdf747dc64aadf1df152ca6bb0d934c2"
 		launchOptions = &data.LaunchOptions{
-			OS:         "mac",
-			Arch:       "64",
 			Executable: "././eggnoggplus.app",
 		}
 	}
