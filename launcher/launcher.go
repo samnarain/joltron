@@ -89,7 +89,7 @@ func NewLauncher(dir string, args []string, jsonNet *jsonnet.Listener, os2 OS.OS
 	}
 
 	var cmd *exec.Cmd
-	switch l.manifest.LaunchOptions.OS {
+	switch l.manifest.OS {
 	case "windows":
 		cmd, err = LaunchWindows(path, l.args, l.os)
 	case "linux":

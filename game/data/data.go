@@ -80,9 +80,15 @@ type Info struct {
 
 // LaunchOptions has information about how to launch the game.
 type LaunchOptions struct {
-	OS         string `json:"os"`
-	Arch       string `json:"arch"`
 	Executable string `json:"executable"`
+
+	// We don't not need to care about the os/arch since
+	// we only care about the target os/arch which should not be overriden by
+	// the build os/arch so we could keep fetching builds that are matching
+	// our target instead of builds that are matching our currently installed one.
+	// OS and Arch instead are specified directly under the manifest
+	// OS   string `json:"os"`
+	// Arch string `json:"arch"`
 }
 
 // PatchInfo has information needed to install/update/uninstall a game.
@@ -97,6 +103,8 @@ type PatchInfo struct {
 	DownloadSize     int64          `json:"downloadSize,omitempty"`
 	DownloadChecksum string         `json:"downloadChecksum,omitempty"`
 	LaunchOptions    *LaunchOptions `json:"launchOptions,omitempty"`
+	OS               string         `json:"os,omitempty"`
+	Arch             string         `json:"arch,omitempty"`
 
 	OldBuildMetadata *BuildMetadata `json:"oldBuildMetadata,omitempty"`
 	NewBuildMetadata *BuildMetadata `json:"newBuildMetadata,omitempty"`
@@ -121,6 +129,8 @@ type Manifest struct {
 	Version        string         `json:"version"`
 	Info           *Info          `json:"gameInfo"`
 	LaunchOptions  *LaunchOptions `json:"launchOptions"`
+	OS             string         `json:"os"`
+	Arch           string         `json:"arch"`
 	IsFirstInstall bool           `json:"isFirstInstall"`
 	PatchInfo      *PatchInfo     `json:"patchInfo,omitempty"`
 	RunningInfo    *RunningInfo   `json:"runningInfo,omitempty"`

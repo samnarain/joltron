@@ -567,8 +567,6 @@ func TestPatchFirstRecoverCrashDuringDownload(t *testing.T) {
 	// Mock the update dir to look like it crashed during first installation at download
 	test.RequireFixture(t, patch1File, dir, ".tempDownload")
 	launchOptions := &data.LaunchOptions{
-		OS:         updateMetadata.OS,
-		Arch:       updateMetadata.Arch,
 		Executable: updateMetadata.Executable,
 	}
 	manifest := &data.Manifest{
@@ -577,6 +575,8 @@ func TestPatchFirstRecoverCrashDuringDownload(t *testing.T) {
 			GameUID: updateMetadata.GameUID,
 		},
 		LaunchOptions:  launchOptions,
+		OS:             updateMetadata.OS,
+		Arch:           updateMetadata.Arch,
 		IsFirstInstall: true,
 		PatchInfo: &data.PatchInfo{
 			Dir:     "data",
@@ -610,8 +610,6 @@ func TestPatchFirstRecoverCrashDuringExtract(t *testing.T) {
 	// Mock the update dir to look like it crashed during first installation at extract
 	test.RequireFixture(t, patch1File, dir, ".tempDownload")
 	launchOptions := &data.LaunchOptions{
-		OS:         updateMetadata.OS,
-		Arch:       updateMetadata.Arch,
 		Executable: updateMetadata.Executable,
 	}
 	manifest := &data.Manifest{
@@ -620,6 +618,8 @@ func TestPatchFirstRecoverCrashDuringExtract(t *testing.T) {
 			GameUID: updateMetadata.GameUID,
 		},
 		LaunchOptions:  launchOptions,
+		OS:             updateMetadata.OS,
+		Arch:           updateMetadata.Arch,
 		IsFirstInstall: true,
 		PatchInfo: &data.PatchInfo{
 			Dir:          "data",
@@ -659,8 +659,6 @@ func TestPatchCancelFirstAfterRecoverCrashDuringDownload(t *testing.T) {
 	// Mock the update dir to look like it crashed during first installation at download
 	test.RequireFixture(t, patch1File, dir, ".tempDownload")
 	launchOptions := &data.LaunchOptions{
-		OS:         updateMetadata.OS,
-		Arch:       updateMetadata.Arch,
 		Executable: updateMetadata.Executable,
 	}
 	manifest := &data.Manifest{
@@ -669,6 +667,8 @@ func TestPatchCancelFirstAfterRecoverCrashDuringDownload(t *testing.T) {
 			GameUID: updateMetadata.GameUID,
 		},
 		LaunchOptions:  launchOptions,
+		OS:             updateMetadata.OS,
+		Arch:           updateMetadata.Arch,
 		IsFirstInstall: true,
 		PatchInfo: &data.PatchInfo{
 			Dir:     "data",
@@ -710,8 +710,6 @@ func TestPatchCancelFirstAfterRecoverCrashDuringExtract(t *testing.T) {
 	// Mock the update dir to look like it crashed during first installation at extract
 	test.RequireFixture(t, patch1File, dir, ".tempDownload")
 	launchOptions := &data.LaunchOptions{
-		OS:         updateMetadata.OS,
-		Arch:       updateMetadata.Arch,
 		Executable: updateMetadata.Executable,
 	}
 	manifest := &data.Manifest{
@@ -720,6 +718,8 @@ func TestPatchCancelFirstAfterRecoverCrashDuringExtract(t *testing.T) {
 			GameUID: updateMetadata.GameUID,
 		},
 		LaunchOptions:  launchOptions,
+		OS:             updateMetadata.OS,
+		Arch:           updateMetadata.Arch,
 		IsFirstInstall: true,
 		PatchInfo: &data.PatchInfo{
 			Dir:          "data",
@@ -789,8 +789,6 @@ func TestPatchExistingRecoverCrashDuringDownload(t *testing.T) {
 		IsDirty: false,
 
 		LaunchOptions: &data.LaunchOptions{
-			OS:         updateMetadata.OS,
-			Arch:       updateMetadata.Arch,
 			Executable: updateMetadata.Executable,
 		},
 		DownloadSize:     updateMetadata.RemoteSize,
@@ -841,8 +839,6 @@ func TestPatchExistingRecoverCrashDuringExtract(t *testing.T) {
 		IsDirty:      true,
 
 		LaunchOptions: &data.LaunchOptions{
-			OS:         updateMetadata.OS,
-			Arch:       updateMetadata.Arch,
 			Executable: updateMetadata.Executable,
 		},
 		DownloadSize:     updateMetadata.RemoteSize,
@@ -874,8 +870,6 @@ func TestPatchCancelFirstBuildDirAfterRecoverCrashDuringDownload(t *testing.T) {
 	// Mock the update dir to look like it crashed during first installation at download
 	test.RequireFixture(t, patch1File, dir, ".tempDownload")
 	launchOptions := &data.LaunchOptions{
-		OS:         updateMetadata.OS,
-		Arch:       updateMetadata.Arch,
 		Executable: updateMetadata.Executable,
 	}
 	manifest := &data.Manifest{
@@ -884,6 +878,8 @@ func TestPatchCancelFirstBuildDirAfterRecoverCrashDuringDownload(t *testing.T) {
 			GameUID: updateMetadata.GameUID,
 		},
 		LaunchOptions:  launchOptions,
+		OS:             updateMetadata.OS,
+		Arch:           updateMetadata.Arch,
 		IsFirstInstall: true,
 		PatchInfo: &data.PatchInfo{
 			Dir:     "data-" + updateMetadata.GameUID,
@@ -925,8 +921,6 @@ func TestPatchCancelFirstBuildDirAfterRecoverCrashDuringExtract(t *testing.T) {
 	// Mock the update dir to look like it crashed during first installation at extract
 	test.RequireFixture(t, patch1File, dir, ".tempDownload")
 	launchOptions := &data.LaunchOptions{
-		OS:         updateMetadata.OS,
-		Arch:       updateMetadata.Arch,
 		Executable: updateMetadata.Executable,
 	}
 	manifest := &data.Manifest{
@@ -935,6 +929,8 @@ func TestPatchCancelFirstBuildDirAfterRecoverCrashDuringExtract(t *testing.T) {
 			GameUID: updateMetadata.GameUID,
 		},
 		LaunchOptions:  launchOptions,
+		OS:             updateMetadata.OS,
+		Arch:           updateMetadata.Arch,
 		IsFirstInstall: true,
 		PatchInfo: &data.PatchInfo{
 			Dir:          "data-" + updateMetadata.GameUID,
@@ -1006,8 +1002,6 @@ func TestPatchExistingBuildDirRecoverCrashDuringDownload(t *testing.T) {
 		IsDirty: false,
 
 		LaunchOptions: &data.LaunchOptions{
-			OS:         updateMetadata.OS,
-			Arch:       updateMetadata.Arch,
 			Executable: updateMetadata.Executable,
 		},
 		DownloadSize:     updateMetadata.RemoteSize,
@@ -1058,8 +1052,6 @@ func TestPatchExistingBuildDirRecoverCrashDuringExtract(t *testing.T) {
 		IsDirty:      true,
 
 		LaunchOptions: &data.LaunchOptions{
-			OS:         updateMetadata.OS,
-			Arch:       updateMetadata.Arch,
 			Executable: updateMetadata.Executable,
 		},
 		DownloadSize:     updateMetadata.RemoteSize,
