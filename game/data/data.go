@@ -126,7 +126,7 @@ type PlayingInfo struct {
 
 // Manifest is the information that ends up getting written to the filesystem.
 type Manifest struct {
-	Version        string         `json:"version"`
+	Version        int            `json:"version"`
 	Info           *Info          `json:"gameInfo"`
 	LaunchOptions  *LaunchOptions `json:"launchOptions"`
 	OS             string         `json:"os"`
