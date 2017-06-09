@@ -3,7 +3,7 @@ package data
 const (
 	// ManifestVersion is the version in the manifest.
 	// It should be updated every time theres a change in the manifest format.
-	ManifestVersion = "1"
+	ManifestVersion = 1
 )
 
 // UpdateMetadata is an incoming message from a child saying an update for the currently running game is available.
