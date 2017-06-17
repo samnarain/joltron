@@ -18,7 +18,6 @@ import (
 	"os/exec"
 
 	"github.com/droundy/goopt"
-	"github.com/gamejolt/joltron/concurrency"
 	"github.com/gamejolt/joltron/game"
 	"github.com/gamejolt/joltron/game/data"
 	"github.com/gamejolt/joltron/launcher"
@@ -50,9 +49,10 @@ func main() {
 	authTokenArg := goopt.StringWithLabel([]string{"--auth-token"}, "", "TOKEN", "An optional token that grants additional access permissions[2]")
 	metadataArg := goopt.StringWithLabel([]string{"--metadata"}, "", "METADATA", "Any extra data the platform might need to fetch the fetch the game build")
 
-	startPausedArg := goopt.Flag([]string{"--paused"}, []string{}, "In an install operation, start the operation paused, waiting for a resume", "")
+	waitForConnectionArg := goopt.IntWithLabel([]string{"--wait-for-connection"}, 0, "TIMEOUT", "Wait until a first connection is made. If none connected until timeout, abort")
 	hideLoaderArg := goopt.Flag([]string{"--no-loader"}, []string{}, "In an install operation, do not display the loader UI. Update silently", "")
 	launchArg := goopt.Flag([]string{"--launch"}, []string{}, "In an install operation, launch the game immediately after installation", "")
+	symbioteArg := goopt.Flag([]string{"--symbiote"}, []string{}, "Makes this operation terminate itself when the first connection that was made to it closes", "")
 	mutexArg := goopt.StringWithLabel([]string{"--mutex"}, "", "MUTEX", "A name for a mutex that must be acquired[3]")
 
 	urlArg := goopt.StringWithLabel([]string{"--url"}, "", "URL", "The url for getting the next game build")
@@ -159,6 +159,16 @@ Notes:
 		}
 	}
 
+	if *symbioteArg {
+		symbiote(net)
+	}
+
+	if *waitForConnectionArg != 0 {
+		if err := <-waitForConnection(net, time.Duration(*waitForConnectionArg)*time.Second); err != nil {
+			panic(err.Error())
+		}
+	}
+
 	err = func() error {
 		switch cmd {
 		case "run":
@@ -238,22 +248,10 @@ Notes:
 				return errors.New("Remote file size must be a positive integer")
 			}
 
-			resumable := concurrency.NewResumable(nil)
-			// Start paused, so that the client can control when to start updating
-			if *startPausedArg {
-				resumable.Pause()
-			}
-
-			return update(resumable, net, dir, updateMetadata, *hideLoaderArg, *launchArg)
+			return update(net, dir, updateMetadata, *hideLoaderArg, *launchArg)
 
 		case "uninstall":
-			resumable := concurrency.NewResumable(nil)
-			// Start paused, so that the client can control when to start updating
-			if *startPausedArg {
-				resumable.Pause()
-			}
-
-			return uninstall(resumable, net, dir)
+			return uninstall(net, dir)
 
 		default:
 			return fmt.Errorf("%q is not a valid command. See \"joltron help\" for more info", cmd)
@@ -275,6 +273,55 @@ Notes:
 		//fmt.Println(err)
 		os.Exit(2)
 	}
+}
+
+func waitForConnection(net *jsonnet.Listener, timeout time.Duration) <-chan error {
+	ch := make(chan error)
+	go func() {
+		defer close(ch)
+
+		s, err := net.OnConnection()
+		if err != nil {
+			ch <- err
+			return
+		}
+		defer s.Close()
+
+		for {
+			select {
+			case <-time.After(timeout):
+				ch <- errors.New("Connection wasn't made in time")
+				return
+			case _, open := <-s.Next():
+				if !open {
+					break
+				}
+
+				ch <- nil
+				return
+			}
+		}
+	}()
+	return ch
+}
+
+func symbiote(net *jsonnet.Listener) {
+	go func() {
+		s, err := net.OnConnection()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Could not subscribe to net connection events: %s\n", err.Error())
+			os.Exit(1)
+		}
+
+		conn := <-s.Next()
+		s.Close()
+		if conn == nil {
+			return
+		}
+
+		<-conn.(*jsonnet.Connection).Done()
+		panic("Symbiote host connection closed, aborting")
+	}()
 }
 
 func validateCommonOptions(_port int, dir string) (*data.Manifest, *jsonnet.Listener, string, error) {
@@ -809,7 +856,7 @@ func run(net *jsonnet.Listener, dir string, args []string) error {
 	return nil
 }
 
-func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string, updateMetadata *data.UpdateMetadata, hideLoader, launchLater bool) error {
+func update(net *jsonnet.Listener, dir string, updateMetadata *data.UpdateMetadata, hideLoader, launchLater bool) error {
 	if updateMetadata.URL == "" {
 		return errors.New("Url must be specified when in update mode")
 	}
@@ -834,7 +881,7 @@ func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string,
 		},
 	})
 
-	patch, err := patcher.NewInstall(resumable, dir, false, net, updateMetadata, os2)
+	patch, err := patcher.NewInstall(nil, dir, false, net, updateMetadata, os2)
 	if err != nil {
 		net.Broadcast(&outgoing.OutMsgUpdate{
 			Message: "updateFailed",
@@ -858,7 +905,7 @@ func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string,
 					cmd := msg.Payload.(*incoming.InMsgControlCommand)
 					switch cmd.Command {
 					case "pause":
-						resumable.Pause()
+						patch.Pause()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
@@ -866,7 +913,7 @@ func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string,
 							Message: "paused",
 						})
 					case "resume":
-						resumable.Resume()
+						patch.Resume()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
@@ -874,7 +921,7 @@ func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string,
 							Message: "resumed",
 						})
 					case "cancel":
-						resumable.Cancel()
+						patch.Cancel()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
@@ -907,7 +954,7 @@ func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string,
 						PatcherState: int(patch.State()),
 						Pid:          os.Getpid(),
 						IsRunning:    false,
-						IsPaused:     !resumable.IsRunning(),
+						IsPaused:     !patch.IsRunning(),
 						Manifest:     manifest,
 					})
 				default:
@@ -939,13 +986,13 @@ func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string,
 	return nil
 }
 
-func uninstall(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string) error {
+func uninstall(net *jsonnet.Listener, dir string) error {
 	net.Broadcast(&outgoing.OutMsgUpdate{
 		Message: "uninstallBegin",
 		Payload: dir,
 	})
 
-	patch, err := patcher.NewUninstall(resumable, dir, net, nil)
+	patch, err := patcher.NewUninstall(nil, dir, net, nil)
 	if err != nil {
 		return err
 	}
@@ -972,7 +1019,7 @@ func uninstall(resumable *concurrency.Resumable, net *jsonnet.Listener, dir stri
 					cmd := msg.Payload.(*incoming.InMsgControlCommand)
 					switch cmd.Command {
 					case "pause":
-						resumable.Pause()
+						patch.Pause()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
@@ -980,7 +1027,7 @@ func uninstall(resumable *concurrency.Resumable, net *jsonnet.Listener, dir stri
 							Message: "paused",
 						})
 					case "resume":
-						resumable.Resume()
+						patch.Resume()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
@@ -988,7 +1035,7 @@ func uninstall(resumable *concurrency.Resumable, net *jsonnet.Listener, dir stri
 							Message: "resumed",
 						})
 					case "cancel":
-						resumable.Cancel()
+						patch.Cancel()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
@@ -1013,7 +1060,7 @@ func uninstall(resumable *concurrency.Resumable, net *jsonnet.Listener, dir stri
 						PatcherState: int(patch.State()),
 						Pid:          os.Getpid(),
 						IsRunning:    false,
-						IsPaused:     !resumable.IsRunning(),
+						IsPaused:     !patch.IsRunning(),
 						Manifest:     manifest,
 					})
 				default:

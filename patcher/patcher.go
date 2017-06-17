@@ -118,13 +118,8 @@ func (p *Patch) changeState(state State) {
 }
 
 // Subscribe returns a channel used to receive messages from the patcher
-func (p *Patch) Subscribe() (broadcast.Subscriber, error) {
+func (p *Patch) Subscribe() (*broadcast.Subscriber, error) {
 	return p.broadcaster.Join()
-}
-
-// Unsubscribe unsubscribes from the patcher
-func (p *Patch) Unsubscribe(subscriber broadcast.Subscriber) error {
-	return p.broadcaster.Leave(subscriber)
 }
 
 // Finish comment

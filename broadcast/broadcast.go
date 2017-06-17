@@ -20,8 +20,22 @@ type Broadcaster struct {
 	closed    bool
 }
 
-// Subscriber is the read only channel the Broadcast.Join/Leave functions work with.
-type Subscriber <-chan interface{}
+// Subscriber is a consumer of a broadcaster messages.
+// It has the read only channel the Broadcast.Join/Leave functions work with.
+type Subscriber struct {
+	ch          <-chan interface{}
+	broadcaster *Broadcaster
+}
+
+// Next returns a read channel on which messages from the broadcaster can be received
+func (s *Subscriber) Next() <-chan interface{} {
+	return s.ch
+}
+
+// Close unsubscribes from the broadcaster
+func (s *Subscriber) Close() error {
+	return s.broadcaster.Leave(s)
+}
 
 // NewBroadcaster creates a new broadcaster
 func NewBroadcaster() *Broadcaster {
@@ -32,7 +46,7 @@ func NewBroadcaster() *Broadcaster {
 
 // Join returns a new channel that will receive broadcasts from this broadcaster.
 // the channel must not be closed manually. Instead, call Leave() with it.
-func (b *Broadcaster) Join() (Subscriber, error) {
+func (b *Broadcaster) Join() (*Subscriber, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -42,11 +56,11 @@ func (b *Broadcaster) Join() (Subscriber, error) {
 
 	ch := make(chan interface{}, 10)
 	b.listeners = append(b.listeners, ch)
-	return ch, nil
+	return &Subscriber{ch: ch, broadcaster: b}, nil
 }
 
 // Leave removes a channel from a broadcaster, and closes it.
-func (b *Broadcaster) Leave(ch Subscriber) error {
+func (b *Broadcaster) Leave(s *Subscriber) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -55,7 +69,7 @@ func (b *Broadcaster) Leave(ch Subscriber) error {
 	}
 
 	for i, val := range b.listeners {
-		if val == ch {
+		if val == s.ch {
 			close(val)
 			// Fast way of removing an element when we don't care about order - swap removed element with the last element and trim the slice.
 			b.listeners[len(b.listeners)-1], b.listeners[i] = b.listeners[i], b.listeners[len(b.listeners)-1]
