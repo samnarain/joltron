@@ -25,6 +25,7 @@ var (
 var (
 	kernel32        = syscall.NewLazyDLL("kernel32.dll")
 	procCreateMutex = kernel32.NewProc("CreateMutexW")
+	procCloseHandle = kernel32.NewProc("CloseHandle")
 	heldMutexes     = map[string]uintptr{}
 	mu              = sync.Mutex{}
 )
@@ -58,11 +59,14 @@ func ReleaseMutex(name string) error {
 		return ErrNoSuchMutex
 	}
 
-	ret, _, err := procCreateMutex.Call(mutexH)
+	ret, _, err := procCloseHandle.Call(mutexH)
 	switch int(err.(syscall.Errno)) {
 	case 0:
-		delete(heldMutexes, name)
-		return nil
+		if ret != 0 {
+			delete(heldMutexes, name)
+			return nil
+		}
+		return errors.New("Could not release mutex")
 	default:
 		return err
 	}
