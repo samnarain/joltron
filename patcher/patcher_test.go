@@ -423,7 +423,7 @@ func TestPatchUninstallSameDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertFileNotExist(t, patch.dataDir, ".")
+	assertFileNotExist(t, dir, "data")
 	assertFileNotExist(t, dir, ".manifest")
 	assertFileNotExist(t, dir, ".tempDownload")
 }
@@ -524,7 +524,8 @@ func TestPatchUninstallBuildDir(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertFileNotExist(t, patch.dataDir, ".")
+	log.Println(patch.dataDir)
+	assertFileNotExist(t, dir, "data-game-v1")
 	assertFileNotExist(t, dir, ".manifest")
 	assertFileNotExist(t, dir, ".tempDownload")
 }

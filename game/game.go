@@ -11,14 +11,21 @@ import (
 	"strconv"
 	"time"
 
+	"sync"
+
 	"github.com/gamejolt/joltron/game/data"
 	"github.com/gamejolt/joltron/network/messages/incoming"
 	"github.com/gamejolt/joltron/network/messages/outgoing"
 	OS "github.com/gamejolt/joltron/os"
 )
 
+var mu sync.Mutex
+
 // GetManifest gets the .manifest in a given directory
 func GetManifest(dir string, os2 OS.OS) (*data.Manifest, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
 	if os2 == nil {
 		temp, err := OS.NewFileScope(dir, true)
 		if err != nil {
@@ -46,6 +53,9 @@ func GetManifest(dir string, os2 OS.OS) (*data.Manifest, error) {
 
 // WriteManifest writes the .manifest in a given directory
 func WriteManifest(manifest *data.Manifest, dir string, os2 OS.OS) error {
+	mu.Lock()
+	defer mu.Unlock()
+
 	if os2 == nil {
 		temp, err := OS.NewFileScope(dir, true)
 		if err != nil {
@@ -79,7 +89,7 @@ func IsGameRunning(dir string, checkDuration time.Duration) bool {
 		return false
 	}
 
-	if runningState.Manifest == nil || runningState.Manifest.RunningInfo == nil || runningState.Manifest.RunningInfo.Pid == manifest.RunningInfo.Pid {
+	if runningState.Manifest == nil || runningState.Manifest.RunningInfo == nil || runningState.Manifest.RunningInfo.Pid != manifest.RunningInfo.Pid {
 		return false
 	}
 
@@ -93,12 +103,15 @@ func IsRunnerRunning(dir string, checkDuration time.Duration) bool {
 		return false
 	}
 
+	log.Printf("Got manifest: %v", manifest)
+	log.Println("Getting runner state...")
 	runningState, err := getRunnerState(manifest.RunningInfo.Port, checkDuration)
 	if err != nil {
+		log.Println("Couldnt get state: " + err.Error())
 		return false
 	}
 
-	if runningState.Manifest == nil || runningState.Manifest.RunningInfo == nil || runningState.Manifest.RunningInfo.Pid == manifest.RunningInfo.Pid {
+	if runningState.Manifest == nil || runningState.Manifest.RunningInfo == nil || runningState.Manifest.RunningInfo.Pid != manifest.RunningInfo.Pid {
 		return false
 	}
 
@@ -114,33 +127,28 @@ func getRunnerState(port uint16, checkDuration time.Duration) (*outgoing.OutMsgS
 
 	conn.SetDeadline(time.Now().Add(checkDuration))
 
+	expectedMsgID := time.Now().String()
+
 	enc := json.NewEncoder(conn)
-	var rawMessage json.RawMessage = []byte("{}")
-	msg := incoming.InMsg{
-		Type:    1, // 1 in InMsg maps to state
-		Payload: &rawMessage,
-	}
-	if err := enc.Encode(msg); err != nil {
+	if err := incoming.EncodeMsg(enc, &incoming.InMsgState{}, expectedMsgID); err != nil {
 		return nil, err
 	}
 
 	dec := json.NewDecoder(conn)
-	msgResponse := outgoing.OutMsg{}
-	if err := dec.Decode(&msgResponse); err != nil {
+	msgResponse, msgID, err := outgoing.DecodeMsg(dec)
+	if err != nil {
 		return nil, err
 	}
 
-	// Type 0 in OutMsg maps to state response
-	if msgResponse.Type != 0 {
-		return nil, fmt.Errorf("Invalid message response type %d received", msgResponse.Type)
+	if msgID != expectedMsgID {
+		return nil, fmt.Errorf("Expecting msg id: %s but got: %s", expectedMsgID, msgID)
 	}
 
-	switch msgResponse.Payload.(type) {
-	case outgoing.OutMsgState:
-		stateResponse := msgResponse.Payload.(outgoing.OutMsgState)
-		return &stateResponse, nil
+	switch msgResponse.(type) {
+	case *outgoing.OutMsgState:
+		return msgResponse.(*outgoing.OutMsgState), nil
 	default:
-		return nil, fmt.Errorf("Invalid message payload format received: %v", msgResponse)
+		return nil, fmt.Errorf("Expecting message response type to be *OutMsgState")
 	}
 }
 

@@ -51,6 +51,15 @@ type InMsg struct {
 	Payload *json.RawMessage `json:"payload"`
 }
 
+// InMsgRequest is a dynamic json that should be identical to the incoming messages,
+// however it is used to marshal them as OUTGOING messages. Used when the runner needs to
+// communicate with another runner and send incoming messages out.
+type InMsgRequest struct {
+	Type    InKind      `json:"type"`
+	MsgID   string      `json:"msgId,omitempty"`
+	Payload interface{} `json:"payload"`
+}
+
 const (
 	control InKind = iota
 	state
@@ -103,4 +112,40 @@ func parseMsg(msg *InMsg) (interface{}, error) {
 		return nil, err
 	}
 	return payload, nil
+}
+
+func wrapMessage(msg interface{}, msgID string) (interface{}, error) {
+	var in InMsgRequest
+	switch msg.(type) {
+	case *InMsgControlCommand:
+		in = InMsgRequest{Type: control}
+	case *InMsgState:
+		in = InMsgRequest{Type: state}
+	case *InMsgCheckForUpdates:
+		in = InMsgRequest{Type: checkForUpdates}
+	case *data.UpdateMetadata:
+		in = InMsgRequest{Type: updateAvailable}
+	case *InMsgUpdateBegin:
+		in = InMsgRequest{Type: updateBegin}
+	case *InMsgUpdateApply:
+		in = InMsgRequest{Type: updateApply}
+	default:
+		return nil, errors.New("Invalid outgoing message type")
+	}
+
+	in.Payload = msg
+	if msgID != "" {
+		in.MsgID = msgID
+	}
+	return in, nil
+}
+
+// EncodeMsg encodes a message and wraps it in the generic envelop type
+func EncodeMsg(enc *json.Encoder, msg interface{}, msgID string) error {
+	msg, err := wrapMessage(msg, msgID)
+	if err != nil {
+		return err
+	}
+
+	return enc.Encode(msg)
 }

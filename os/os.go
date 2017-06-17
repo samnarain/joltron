@@ -11,6 +11,11 @@ import (
 )
 
 var (
+	// ErrMutexesNotSupported is thrown when you try using mutexes on unsupported platforms
+	ErrMutexesNotSupported = errors.New("Mutexes not supported on this OS")
+)
+
+var (
 	// ErrNotScoped is thrown when a file is accessed out of scope
 	ErrNotScoped = errors.New("File out of scope")
 

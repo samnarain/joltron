@@ -537,8 +537,8 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 }
 
 // NewUninstall comment
-func NewUninstall(resumable *concurrency.Resumable, dir string, os2 OS.OS) (*Patch, error) {
-	p, err := newPatcher(resumable, false, dir, false, nil, nil, os2)
+func NewUninstall(resumable *concurrency.Resumable, dir string, jsonNet *jsonnet.Listener, os2 OS.OS) (*Patch, error) {
+	p, err := newPatcher(resumable, false, dir, false, jsonNet, nil, os2)
 	if err != nil {
 		return nil, err
 	}
@@ -689,7 +689,7 @@ func (p *Patch) download() error {
 		p.downloader = download.NewDownload(p.Resumable, p.UpdateMetadata.URL, filepath.Join(p.Dir, ".tempDownload"), p.UpdateMetadata.Checksum, p.UpdateMetadata.RemoteSize, p.os, func(downloaded, total int64, sample *stream.Sample) {
 			if p.jsonNet != nil {
 				p.jsonNet.Broadcast(&outgoing.OutMsgProgress{
-					// type: "download"
+					Type:    "download",
 					Current: downloaded,
 					Total:   total,
 					Percent: int(float64(downloaded) / float64(total) * 100),
@@ -776,7 +776,7 @@ func (p *Patch) extract() error {
 	extractor, err := extract.NewExtraction(p.Resumable, p.downloader.File, p.newDataDir, p.os, func(extracted, total int64, sample *stream.Sample) {
 		if p.jsonNet != nil {
 			p.jsonNet.Broadcast(&outgoing.OutMsgProgress{
-				// type: "extract"
+				Type:    "extract",
 				Current: extracted,
 				Total:   total,
 				Percent: int(float64(extracted) / float64(total) * 100),

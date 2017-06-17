@@ -53,15 +53,16 @@ func main() {
 	startPausedArg := goopt.Flag([]string{"--paused"}, []string{}, "In an install operation, start the operation paused, waiting for a resume", "")
 	hideLoaderArg := goopt.Flag([]string{"--no-loader"}, []string{}, "In an install operation, do not display the loader UI. Update silently", "")
 	launchArg := goopt.Flag([]string{"--launch"}, []string{}, "In an install operation, launch the game immediately after installation", "")
+	mutexArg := goopt.StringWithLabel([]string{"--mutex"}, "", "MUTEX", "A name for a mutex that must be acquired[3]")
 
 	urlArg := goopt.StringWithLabel([]string{"--url"}, "", "URL", "The url for getting the next game build")
 	checksumArg := goopt.StringWithLabel([]string{"--checksum"}, "", "MD5", "The md5 checksum of the expected downloaded patch. Optional")
 	remoteSizeArg := goopt.StringWithLabel([]string{"--remote-size"}, "", "SIZE", "The expected downloaded patch size in bytes. Optional")
 	useBuildDirsArg := goopt.Flag([]string{"--side-by-side"}, []string{}, "If specified, the game will update in a new directory instead of the default \"data\" dir", "")
 	inPlaceArg := goopt.Flag([]string{"--in-place"}, []string{}, "If specified, the game will update in-place in the default \"data\" dir", "")
-	osArg := goopt.StringWithLabel([]string{"--os"}, "", "OS", "The build's target OS[3] - windows, linux or mac")
-	archArg := goopt.StringWithLabel([]string{"--arch"}, "", "ARCH", "The build's target arch bits[3] - 32 or 64")
-	executableArg := goopt.StringWithLabel([]string{"--executable"}, "", "EXE", "The path to the executable in the build[4]")
+	osArg := goopt.StringWithLabel([]string{"--os"}, "", "OS", "The build's target OS[4] - windows, linux or mac")
+	archArg := goopt.StringWithLabel([]string{"--arch"}, "", "ARCH", "The build's target arch bits[4] - 32 or 64")
+	executableArg := goopt.StringWithLabel([]string{"--executable"}, "", "EXE", "The path to the executable in the build[5]")
 
 	versionArg := goopt.Flag([]string{"-v", "--version"}, []string{}, "Displays the version", "")
 
@@ -74,8 +75,9 @@ Notes:
   [1] Game uid is platform specific. Game Jolt's uid for example is just the package ID
   [2] For security reasons, the auth token is recommended to be short lived and usable only by the desired user.
       The runner makes no special attempts to secure it's transmission.
-  [3] OS/arch should be what the build was targeted for, not the OS/arch you are running under currently.
-  [4] The path is relative to the archive, and may be omitted if the build is not an archive
+  [3] Mutexes are currently only supported on Windows platform.
+  [4] OS/arch should be the OS/arch you are running under currently, not what the build was targeted for
+  [5] The path is relative to the archive, and may be omitted if the build is not an archive
 `
 	}
 	goopt.Parse(nil)
@@ -83,6 +85,13 @@ Notes:
 	if *versionArg {
 		fmt.Println("joltron", goopt.Version)
 		os.Exit(0)
+	}
+
+	if *mutexArg != "" {
+		if err := OS.CreateMutex(*mutexArg); err != nil {
+			fmt.Fprintf(os.Stderr, "Could not acquire the %s mutex\n", *mutexArg)
+			os.Exit(1)
+		}
 	}
 
 	// If directory is not specified, attempt to use the directory of the currently launched executable.
@@ -107,6 +116,7 @@ Notes:
 	// What action to take for this execution.
 	// Should be run, install or uninstall.
 	cmd := ""
+	runArgs := []string{}
 
 	// Standalone use - when the runner is simply double clicked or executed with no arguments.
 	// It should look for the manifest next to the executable.
@@ -119,6 +129,7 @@ Notes:
 		}
 	} else {
 		cmd = goopt.Args[0]
+		runArgs = goopt.Args[1:]
 	}
 
 	if cmd == "help" {
@@ -149,10 +160,9 @@ Notes:
 	}
 
 	err = func() error {
-		cmd := goopt.Args[0]
 		switch cmd {
 		case "run":
-			return run(net, dir, goopt.Args[1:])
+			return run(net, dir, runArgs)
 
 		case "install":
 			var updateMetadata *data.UpdateMetadata
@@ -746,7 +756,7 @@ func run(net *jsonnet.Listener, dir string, args []string) error {
 						Success: true,
 					})
 					net.Broadcast(&outgoing.OutMsgUpdate{
-						Message: "updatePaused",
+						Message: "paused",
 					})
 
 				case "resume":
@@ -765,7 +775,7 @@ func run(net *jsonnet.Listener, dir string, args []string) error {
 						Success: true,
 					})
 					net.Broadcast(&outgoing.OutMsgUpdate{
-						Message: "updateResumed",
+						Message: "resumed",
 					})
 				case "cancel":
 					// TODO: why can't we cancel while game is running?
@@ -852,15 +862,24 @@ func update(resumable *concurrency.Resumable, net *jsonnet.Listener, dir string,
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "paused",
+						})
 					case "resume":
 						resumable.Resume()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "resumed",
+						})
 					case "cancel":
 						resumable.Cancel()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
+						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "canceled",
 						})
 					default:
 						msg.Respond(&outgoing.OutMsgResult{
@@ -926,7 +945,7 @@ func uninstall(resumable *concurrency.Resumable, net *jsonnet.Listener, dir stri
 		Payload: dir,
 	})
 
-	patch, err := patcher.NewUninstall(resumable, dir, nil)
+	patch, err := patcher.NewUninstall(resumable, dir, net, nil)
 	if err != nil {
 		return err
 	}
@@ -957,15 +976,24 @@ func uninstall(resumable *concurrency.Resumable, net *jsonnet.Listener, dir stri
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "paused",
+						})
 					case "resume":
 						resumable.Resume()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
 						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "resumed",
+						})
 					case "cancel":
 						resumable.Cancel()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
+						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "canceled",
 						})
 					default:
 						msg.Respond(&outgoing.OutMsgResult{

@@ -24,3 +24,13 @@ func GetArch() (string, error) {
 	}
 	return str, errors.New("Could not determine architecture bit-ness")
 }
+
+// CreateMutex creates a named system level mutex
+func CreateMutex(name string) error {
+	return ErrMutexesNotSupported
+}
+
+// ReleaseMutex releases the mutex created by CreateMutex
+func ReleaseMutex(name string) error {
+	return ErrMutexesNotSupported
+}

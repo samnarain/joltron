@@ -31,8 +31,11 @@ type Resumer interface {
 	Wait() <-chan int
 }
 
+var nextResumableId int
+
 // Resumable handles a resumable operation
 type Resumable struct {
+	id            int
 	ctx           context.Context
 	interruptible bool
 	cancel        context.CancelFunc
@@ -73,16 +76,23 @@ func newResumable(ctx context.Context, parent *Resumable, interruptible bool) *R
 
 		ctx, cancel := context.WithCancel(ctx)
 		child := &Resumable{
+			id:            nextResumableId,
 			ctx:           ctx,
 			aborted:       ctx.Err() != nil, // if ctx.Err() is non nil it means the context has already been canceled, so set aborted to true
 			interruptible: interruptible,
 		}
+		nextResumableId++
 
 		newCancel := func() {
 			child.aborted = true
 			cancel()
 		}
 		child.cancel = newCancel
+
+		go func() {
+			<-child.ctx.Done()
+			child.aborted = true
+		}()
 
 		return child
 	}
@@ -101,17 +111,25 @@ func newResumable(ctx context.Context, parent *Resumable, interruptible bool) *R
 	}
 
 	child := &Resumable{
+		id:            nextResumableId,
 		ctx:           ctx,
 		aborted:       ctx.Err() != nil,
 		onResume:      onResume,
 		isPaused:      isPaused,
 		interruptible: interruptible,
 	}
+	nextResumableId++
+
 	newCancel := func() {
 		child.aborted = true
 		cancel()
 	}
 	child.cancel = newCancel
+
+	go func() {
+		<-child.ctx.Done()
+		child.aborted = true
+	}()
 
 	if parent.children == nil {
 		parent.children = make(map[resumer]bool)
