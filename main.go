@@ -169,10 +169,10 @@ Notes:
 		}
 	}
 
-	err = func() error {
+	result, err := func() (error, error) {
 		switch cmd {
 		case "run":
-			return run(net, dir, runArgs)
+			return run(net, dir, runArgs), nil
 
 		case "install":
 			var updateMetadata *data.UpdateMetadata
@@ -181,12 +181,12 @@ Notes:
 			if gameUID == "" {
 
 				// TODO get the data from the manifest
-				return errors.New("Game UID must be specified")
+				return nil, errors.New("Game UID must be specified")
 			}
 
 			var sideBySide bool
 			if *useBuildDirsArg == true && *inPlaceArg == true {
-				return errors.New("Side-by-side and in-place are mutual exclusive, they can't be used at the same time")
+				return nil, errors.New("Side-by-side and in-place are mutual exclusive, they can't be used at the same time")
 			} else if *useBuildDirsArg == false && *inPlaceArg == false {
 				// By default we prefer updating in place
 				sideBySide = manifest != nil && manifest.Info.Dir != "data"
@@ -195,7 +195,7 @@ Notes:
 			}
 
 			if *platformURLArg == "" && (*urlArg == "" || *osArg == "" || *archArg == "" || *executableArg == "") {
-				return errors.New("Platform url or game data (url, os, arch and executable) must be specified")
+				return nil, errors.New("Platform url or game data (url, os, arch and executable) must be specified")
 			}
 
 			if *platformURLArg != "" {
@@ -207,7 +207,7 @@ Notes:
 
 				updateMetadata, err = game.GetMetadata(gameUID, nextGameUID, *platformURLArg, *authTokenArg, *metadataArg)
 				if err != nil {
-					return err
+					return nil, err
 				}
 
 				if updateMetadata.SideBySide == nil {
@@ -218,7 +218,7 @@ Notes:
 				if *remoteSizeArg != "" {
 					remoteSize, err = strconv.ParseInt(*remoteSizeArg, 10, 64)
 					if err != nil || remoteSize < 0 {
-						return errors.New("Remote file size must be a positive integer")
+						return nil, errors.New("Remote file size must be a positive integer")
 					}
 				}
 
@@ -235,42 +235,57 @@ Notes:
 			}
 
 			if updateMetadata == nil {
-				return errors.New("Installation arguments are invalid")
+				return nil, errors.New("Installation arguments are invalid")
 			}
 
 			if updateMetadata.OS != "windows" && updateMetadata.OS != "mac" && updateMetadata.OS != "linux" {
-				return errors.New("OS must be either 'windows', 'mac' or 'linux'")
+				return nil, errors.New("OS must be either 'windows', 'mac' or 'linux'")
 			}
 			if updateMetadata.Arch != "32" && updateMetadata.Arch != "64" {
-				return errors.New("Arch must be either '32' or '64'")
+				return nil, errors.New("Arch must be either '32' or '64'")
 			}
 			if updateMetadata.RemoteSize != 0 && updateMetadata.RemoteSize < 1 {
-				return errors.New("Remote file size must be a positive integer")
+				return nil, errors.New("Remote file size must be a positive integer")
 			}
 
-			return update(net, dir, updateMetadata, *hideLoaderArg, *launchArg)
+			return update(net, dir, updateMetadata, *hideLoaderArg, *launchArg), nil
 
 		case "uninstall":
-			return uninstall(net, dir)
+			return uninstall(net, dir), nil
 
 		default:
-			return fmt.Errorf("%q is not a valid command. See \"joltron help\" for more info", cmd)
+			return nil, fmt.Errorf("%q is not a valid command. See \"joltron help\" for more info", cmd)
 		}
 	}()
+
+	var endErrMessageType string
+	if err != nil {
+		endErrMessageType = "abort"
+	} else if result != nil {
+		endErrMessageType = "error"
+	}
 
 	// If the manifest exists by the end of this runner run, clear its running info
 	manifest, err2 := game.GetManifest(dir, nil)
 	if err2 == nil && manifest.RunningInfo != nil {
 		manifest.RunningInfo = nil
 		if err2 = game.WriteManifest(manifest, dir, nil); err2 != nil {
-			fmt.Fprintln(os.Stderr, "Failed to update game manifest with running info: "+err2.Error())
-			os.Exit(2)
+			result = errors.New("Failed to clear game manifest's running info: " + err2.Error())
 		}
+	}
+
+	if result != nil {
+		err = result
 	}
 
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		//fmt.Println(err)
+
+		net.Broadcast(&outgoing.OutMsgUpdate{
+			Message: endErrMessageType,
+			Payload: err.Error(),
+		})
+
 		os.Exit(2)
 	}
 }

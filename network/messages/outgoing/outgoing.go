@@ -3,6 +3,7 @@ package outgoing
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/gamejolt/joltron/game/data"
 	"github.com/gamejolt/joltron/stream"
@@ -98,6 +99,10 @@ func EncodeMsg(enc *json.Encoder, msg interface{}, msgID string) error {
 		return err
 	}
 
+	bytes, err := json.Marshal(msg)
+	if err == nil {
+		fmt.Printf("Sending %s\n", string(bytes))
+	}
 	return enc.Encode(msg)
 }
 
@@ -118,6 +123,11 @@ func DecodeMsg(dec *json.Decoder) (interface{}, string, error) {
 	// Decode into the Msg envelop type.
 	if err := dec.Decode(&outMsg); err != nil {
 		return nil, "", err
+	}
+
+	bytes, err := json.Marshal(outMsg)
+	if err == nil {
+		fmt.Printf("Received %s\n", string(bytes))
 	}
 
 	// Parse the payload by looking at the Msg's type

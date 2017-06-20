@@ -79,11 +79,11 @@ func NewDownload(resumable *concurrency.Resumable, url, file, checksum string, r
 	noIdleTimeoutTransport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
-			Timeout:   30 * time.Second,
-			KeepAlive: 30 * time.Second,
+			Timeout:   3 * time.Second,
+			KeepAlive: 5 * time.Second,
 		}).DialContext,
 		MaxIdleConns:          100,
-		IdleConnTimeout:       0, // Override default transport to allow connections to idle forever for resumable support.
+		IdleConnTimeout:       10, // Make the idle timeout relatively short so that when we lose connection the session will end and retry.
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
