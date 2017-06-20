@@ -14,6 +14,8 @@ import (
 
 	"math"
 
+	"compress/gzip"
+
 	"github.com/gamejolt/joltron/concurrency"
 	"github.com/gamejolt/joltron/fs"
 	OS "github.com/gamejolt/joltron/os"
@@ -142,7 +144,11 @@ func (e *Extraction) extract(progress ProgressCallback) Result {
 		if xz.ValidHeader(xzHeaderBytes) {
 			readerType = "xz"
 		} else {
-			return Result{errors.New("Invalid or unsupported compression format"), nil}
+			if _, err := gzip.NewReader(reader); err == nil {
+				readerType = "gz"
+			} else {
+				return Result{errors.New("Invalid or unsupported compression format"), nil}
+			}
 		}
 	}
 
@@ -163,9 +169,12 @@ func (e *Extraction) extract(progress ProgressCallback) Result {
 	var compressionReader io.Reader
 	if readerType == "lzma" {
 		compressionReader, err = lzma.NewReader(sampler)
-	} else {
+	} else if readerType == "xz" {
 		compressionReader, err = xz.NewReader(sampler)
+	} else {
+		compressionReader, err = gzip.NewReader(sampler)
 	}
+
 	if err != nil {
 		return Result{err, nil}
 	}
