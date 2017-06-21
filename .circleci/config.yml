@@ -15,6 +15,9 @@ jobs:
       - run: CGO_ENABLED=0 GOOS=windows GOARCH=386 sh ./build.sh
       - run: mv ./joltron.exe ./joltron_win32.exe
       - run: ls -lah
-      - store_artifacts: "joltron_linux"
-      - store_artifacts: "joltron_osx"
-      - store_artifacts: "joltron_win32.exe"
+      - store_artifacts:
+          path: "joltron_linux"
+      - store_artifacts:
+          path: "joltron_osx"
+      - store_artifacts:
+          path: "joltron_win32.exe"
