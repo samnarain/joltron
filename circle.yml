@@ -5,11 +5,10 @@ general:
     - "joltron_win32.exe"
 
 dependencies:
-  pre:
-    - go get github.com/campoy/jsonenums
   override:
     - mkdir -p ~/.go_project/src/github.com/${CIRCLE_PROJECT_USERNAME}
     - ln -s ${HOME}/${CIRCLE_PROJECT_REPONAME} ${HOME}/.go_project/src/github.com/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}
+    - go get github.com/campoy/jsonenums
     - go get -t -d -v ./...
     - CGO_ENABLED=0 GOOS=linux GOARCH=386 sh ./build.sh
     - mv ./joltron ./joltron_linux
