@@ -6,17 +6,18 @@ go:
 addons:
   artifacts:
     paths:
-      - ./joltron-linux
-      - ./joltron-mac
-      - ./joltron.exe
+      - ./joltron_linux
+      - ./joltron_osx
+      - ./joltron_win32.exe
 
 before_install:
   - go get github.com/campoy/jsonenums
 
 script:
   - CGO_ENABLED=0 GOOS=linux GOARCH=386 sh ./build.sh
-  - mv ./joltron ./joltron-linux
+  - mv ./joltron ./joltron_linux
   - CGO_ENABLED=0 GOOS=darwin GOARCH=386 sh ./build.sh
-  - mv ./joltron ./joltron-mac
+  - mv ./joltron ./joltron_osx
   - CGO_ENABLED=0 GOOS=windows GOARCH=386 sh ./build.sh
+  - mv ./joltron.exe ./joltron_win32.exe
   - ls -lah
