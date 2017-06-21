@@ -2,6 +2,7 @@ package extract
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -115,12 +116,13 @@ func NewExtraction(resumable *concurrency.Resumable, archive string, dir string,
 }
 
 func (e *Extraction) extract(progress ProgressCallback) Result {
-
-	reader, err := e.os.Open(e.Archive)
+	archiveFile, err := e.os.Open(e.Archive)
 	if err != nil {
 		return Result{err, nil}
 	}
-	defer reader.Close()
+	defer archiveFile.Close()
+
+	reader := bufio.NewReader(archiveFile)
 
 	archiveSize, err := fs.Filesize(e.Archive)
 	if err != nil {
@@ -135,15 +137,18 @@ func (e *Extraction) extract(progress ProgressCallback) Result {
 
 	headerBytes := headerWriter.Bytes()
 	lzmaHeaderBytes := headerBytes[:lzma.HeaderLen]
-	log.Println(lzmaHeaderBytes)
 	if lzma.ValidHeader(lzmaHeaderBytes) {
 		readerType = "lzma"
 	} else {
 		xzHeaderBytes := headerBytes[:xz.HeaderLen]
-		log.Println(xzHeaderBytes)
 		if xz.ValidHeader(xzHeaderBytes) {
 			readerType = "xz"
 		} else {
+			if _, err = archiveFile.Seek(0, 0); err != nil {
+				return Result{errors.New("Failed to seek the compressed file reader"), nil}
+			}
+			reader.Reset(archiveFile)
+
 			if _, err := gzip.NewReader(reader); err == nil {
 				readerType = "gz"
 			} else {
@@ -152,9 +157,10 @@ func (e *Extraction) extract(progress ProgressCallback) Result {
 		}
 	}
 
-	if _, err = reader.Seek(0, 0); err != nil {
+	if _, err = archiveFile.Seek(0, 0); err != nil {
 		return Result{errors.New("Failed to seek the compressed file reader"), nil}
 	}
+	reader.Reset(archiveFile)
 
 	sampler, err := stream.NewSpeedSampler(reader, func(sampler *stream.SpeedSampler, sample *stream.Sample) {
 		if progress != nil {

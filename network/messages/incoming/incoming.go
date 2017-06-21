@@ -10,7 +10,8 @@ import (
 
 // InMsgControlCommand is an incoming command to the patch handler to pause, resume or abort the current operation
 type InMsgControlCommand struct {
-	Command string `json:"command"`
+	Command   string            `json:"command"`
+	ExtraData map[string]string `json:"extraData,omitempty"`
 }
 
 // InMsgState is an incoming command to query the updater's current state. It may be "installing", "uninstalling" or "running"

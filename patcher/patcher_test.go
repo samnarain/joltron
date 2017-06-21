@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"sync"
+
 	"github.com/gamejolt/joltron/concurrency"
 	"github.com/gamejolt/joltron/game"
 	"github.com/gamejolt/joltron/game/data"
@@ -26,6 +28,10 @@ const (
 	bigDownloadFile     = ".gj-bigTempFile.tar.xz"
 	bigDownloadURL      = test.AWS + bigDownloadFile
 	bigDownloadChecksum = "ca292a1cfa2d93f6e07feffa6d53e836"
+
+	bigDownloadFileGZ     = ".gj-bigTempFile.tar.gz"
+	bigDownloadURLGZ      = test.AWS + bigDownloadFileGZ
+	bigDownloadChecksumGZ = "9c48bcb8e17b16e835b1b7c051ce4ef0"
 
 	patch1File     = ".gj-testPatcher1.tar.xz"
 	patch1Url      = test.AWS + patch1File
@@ -72,30 +78,28 @@ func getUpdateMetadata(version, url, checksum string, remoteSize int64, sideBySi
 	return updateMetadata
 }
 
+func getFixtureOrDie(wg *sync.WaitGroup, url, checksum string) {
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		if err := <-test.DownloadFixture(url, checksum); err != nil {
+			panic(err.Error())
+		}
+	}()
+}
 func TestMain(m *testing.M) {
-	if err := <-test.DownloadFixture(bigDownloadFile, bigDownloadChecksum); err != nil {
-		panic(err.Error())
-	}
 
-	if err := <-test.DownloadFixture(patch1File, patch1Checksum); err != nil {
-		panic(err.Error())
-	}
-
-	if err := <-test.DownloadFixture(patch2File, patch2Checksum); err != nil {
-		panic(err.Error())
-	}
-
-	if err := <-test.DownloadFixture(build1File, build1Checksum); err != nil {
-		panic(err.Error())
-	}
-
-	if err := <-test.DownloadFixture(currentFile, currentChecksum); err != nil {
-		panic(err.Error())
-	}
-
-	if err := <-test.DownloadFixture(diffFile, diffChecksum); err != nil {
-		panic(err.Error())
-	}
+	// Parallelize fixture downloading
+	wg := &sync.WaitGroup{}
+	test.DoOrDie(test.DownloadFixture(bigDownloadFile, bigDownloadChecksum), wg)
+	test.DoOrDie(test.DownloadFixture(bigDownloadFileGZ, bigDownloadChecksumGZ), wg)
+	test.DoOrDie(test.DownloadFixture(patch1File, patch1Checksum), wg)
+	test.DoOrDie(test.DownloadFixture(patch2File, patch2Checksum), wg)
+	test.DoOrDie(test.DownloadFixture(build1File, build1Checksum), wg)
+	test.DoOrDie(test.DownloadFixture(currentFile, currentChecksum), wg)
+	test.DoOrDie(test.DownloadFixture(diffFile, diffChecksum), wg)
+	wg.Wait()
 
 	oldMetadata = data.BuildMetadata{
 		Files: map[string]data.FileMetadata{
@@ -300,6 +304,73 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func TestBenchmarkPatcherGzip(t *testing.T) {
+	_, dir := test.PrepareNextTest(t)
+
+	updateMetadata := getUpdateMetadata("v1", bigDownloadURLGZ, bigDownloadChecksumGZ, 0, false)
+	test.RequireFixture(t, bigDownloadFileGZ, dir, ".tempDownload")
+
+	now := time.Now()
+
+	for i := 0; i < 100; i++ {
+		patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		<-patch.Done()
+		if err := patch.Result(); err != nil {
+			t.Fatal(err.Error())
+		}
+
+		test.OS.RemoveAll(dir)
+		test.RequireFixture(t, bigDownloadFileGZ, dir, ".tempDownload")
+	}
+
+	delta := time.Now().Sub(now).Seconds()
+	log.Printf("Delta patcher gzip: %f\n", delta)
+}
+
+func TestBenchmarkPatcherXz(t *testing.T) {
+	_, dir := test.PrepareNextTest(t)
+
+	updateMetadata := getUpdateMetadata("v1", bigDownloadURL, bigDownloadChecksum, 0, false)
+	test.RequireFixture(t, bigDownloadFile, dir, ".tempDownload")
+
+	now := time.Now()
+
+	for i := 0; i < 100; i++ {
+		patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+		<-patch.Done()
+
+		test.OS.RemoveAll(dir)
+		test.RequireFixture(t, bigDownloadFile, dir, ".tempDownload")
+	}
+
+	delta := time.Now().Sub(now).Seconds()
+	log.Printf("Delta patcher xz: %f\n", delta)
+}
+
+func TestPatchFirstSameDir(t *testing.T) {
+	_, dir := test.PrepareNextTest(t)
+
+	updateMetadata := getUpdateMetadata("v1", patch1Url, patch1Checksum, 0, false)
+	patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+	<-patch.Done()
+
+	dataDir := filepath.Join(dir, "data")
+	if patch.newDataDir != dataDir {
+		t.Fatalf("Expecting patch.newDataDir to be:\n%s\nreceived:\n%s\n", dataDir, patch.newDataDir)
+	}
+
+	assertFirstPatchState(t, updateMetadata, patch, false)
+}
+
 func TestPatchDiffExistingSameDir(t *testing.T) {
 	_, dir := test.PrepareNextTest(t)
 
@@ -328,10 +399,13 @@ func TestPatchDiffExistingSameDir(t *testing.T) {
 	}
 }
 
-func TestPatchFirstSameDir(t *testing.T) {
+func TestPatchGzip(t *testing.T) {
 	_, dir := test.PrepareNextTest(t)
 
-	updateMetadata := getUpdateMetadata("v1", patch1Url, patch1Checksum, 0, false)
+	// Requiring this fixture will allow us to test on a bigger file without having to download it every time.
+	test.RequireFixture(t, bigDownloadFileGZ, dir, ".tempDownload")
+
+	updateMetadata := getUpdateMetadata("v1", bigDownloadURLGZ, bigDownloadChecksumGZ, 0, false)
 	patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
 	if err != nil {
 		t.Fatal(err.Error())
@@ -343,7 +417,63 @@ func TestPatchFirstSameDir(t *testing.T) {
 		t.Fatalf("Expecting patch.newDataDir to be:\n%s\nreceived:\n%s\n", dataDir, patch.newDataDir)
 	}
 
-	assertFirstPatchState(t, updateMetadata, patch, false)
+	if err := patch.Result(); err != nil {
+		t.Fatal(err)
+	}
+	dir = patch.Dir
+	dataDir = patch.newDataDir
+
+	expectedExtractedFiles := []string{
+		"./bigfile",
+		"./fToPreserve",
+		"./fToPreserveCase",
+		"./fToRemove",
+		"./fToRemoveCase",
+		"./fToUpdate",
+		"./fToUpdateCase",
+		"./toAdd/file1",
+		"./toClear/file1",
+		"./toRemove/file1",
+		"./toRemove/file2",
+	}
+
+	extractResult := patch.extractor.Result()
+	if extractResult.Err != nil {
+		t.Fatal(extractResult.Err)
+	}
+
+	assertSlicesEqual(t, extractResult.Result, expectedExtractedFiles)
+
+	assertFileContentEquals(t, dataDir, "./fToPreserve", "")
+	assertFileContentEquals(t, dataDir, "./fToPreserveCase", "")
+	assertFileContentEquals(t, dataDir, "./fToRemove", "test\n")
+	assertFileContentEquals(t, dataDir, "./fToRemoveCase", "test\n")
+	assertFileContentEquals(t, dataDir, "./fToUpdate", "test\n")
+	assertFileContentEquals(t, dataDir, "./fToUpdateCase", "test\n")
+	assertFileContentEquals(t, dataDir, "./toAdd/file1", "")
+	assertFileContentEquals(t, dataDir, "./toClear/file1", "")
+	assertFileContentEquals(t, dataDir, "./toRemove/file1", "")
+	assertFileContentEquals(t, dataDir, "./toRemove/file2", "")
+
+	assertFolderExists(t, dataDir, "./empty")
+
+	// Attempt to read manifest file
+	manifest, err := game.GetManifest(dir, test.OS)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if manifest.Info.Dir != updateMetadata.DataDir ||
+		manifest.Info.GameUID != updateMetadata.GameUID ||
+		manifest.IsFirstInstall != false ||
+		manifest.PatchInfo != nil {
+		bytes, _ := json.Marshal(manifest)
+		t.Fatalf("Game manifest is invalid:\n%s", string(bytes))
+	}
+
+	assertSlicesEqual(t, manifest.Info.ArchiveFiles, expectedExtractedFiles)
+
+	assertFileNotExist(t, dir, "./.tempDownload")
 }
 
 func TestPatchExistingSameDir(t *testing.T) {
@@ -414,7 +544,7 @@ func TestPatchUninstallSameDir(t *testing.T) {
 	}
 
 	test.GetNextPort()
-	patch, err = NewUninstall(nil, dir, test.OS)
+	patch, err = NewUninstall(nil, dir, nil, test.OS)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -515,7 +645,7 @@ func TestPatchUninstallBuildDir(t *testing.T) {
 	}
 
 	test.GetNextPort()
-	patch, err = NewUninstall(nil, dir, test.OS)
+	patch, err = NewUninstall(nil, dir, nil, test.OS)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -1669,8 +1799,8 @@ func waitForPatchState(p *Patch, state State, timeout time.Duration) <-chan bool
 			close(ch)
 			return
 		}
+		defer sub.Close()
 
-		defer p.Unsubscribe(sub)
 		expire := time.After(timeout)
 		defer close(ch)
 
@@ -1679,7 +1809,7 @@ func waitForPatchState(p *Patch, state State, timeout time.Duration) <-chan bool
 		for {
 			select {
 			// Attempt to get a value from the subscriber
-			case msg, open := <-sub:
+			case msg, open := <-sub.Next():
 				// Break if the subscriber closed
 				if !open {
 					ch <- false

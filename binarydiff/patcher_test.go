@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/gamejolt/joltron/extract"
 	"github.com/gamejolt/joltron/game/data"
 	"github.com/gamejolt/joltron/test"
 )
@@ -301,14 +302,26 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+func requireExtractedFixture(tb testing.TB, fixture, dir, archive, extractTo string) {
+	RequireFixture(tb, fixture, dir, archive)
+	e, err := extract.NewExtraction(nil, filepath.Join(dir, archive), extractTo, OS, nil)
+	if err != nil {
+		tb.Fatal(err.Error())
+	}
+	<-e.Done()
+	if e.Result().Err != nil {
+		tb.Fatal(e.Result().Err.Error())
+	}
+}
+
 func prepareNextTest(t *testing.T) (dir, dataDir, patchDir, diffDir string) {
 	_, dir = test.PrepareNextTest(t)
 	patchDir = filepath.Join(dir, "patch")
 	dataDir = filepath.Join(dir, "data")
 	diffDir = filepath.Join(dir, "diff")
 
-	test.RequireExtractedFixture(t, currentFile, dir, "temp", dataDir)
-	test.RequireExtractedFixture(t, diffFile, dir, "temp2", diffDir)
+	requireExtractedFixture(t, currentFile, dir, "temp", dataDir)
+	requireExtractedFixture(t, diffFile, dir, "temp2", diffDir)
 
 	return dir, dataDir, patchDir, diffDir
 }
@@ -322,7 +335,7 @@ func TestPatcher(t *testing.T) {
 func TestPatcherCrashDuringEnsureDirs(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, crashEnsuringDirsFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, crashEnsuringDirsFile, dir, "temp3", patchDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }
@@ -330,7 +343,7 @@ func TestPatcherCrashDuringEnsureDirs(t *testing.T) {
 func TestPatcherCrashDuringPatchIdentical(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, crashIdenticalFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, crashIdenticalFile, dir, "temp3", patchDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }
@@ -338,7 +351,7 @@ func TestPatcherCrashDuringPatchIdentical(t *testing.T) {
 func TestPatcherCrashDuringPatchSimilar(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, crashSimilarFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, crashSimilarFile, dir, "temp3", patchDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }
@@ -346,7 +359,7 @@ func TestPatcherCrashDuringPatchSimilar(t *testing.T) {
 func TestPatcherCrashDuringPatchCreated(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, crashCreatedFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, crashCreatedFile, dir, "temp3", patchDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }
@@ -354,7 +367,7 @@ func TestPatcherCrashDuringPatchCreated(t *testing.T) {
 func TestPatcherCrashDuringPatchDynamicConflict(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, crashDynamicConflictFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, crashDynamicConflictFile, dir, "temp3", patchDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }
@@ -362,7 +375,7 @@ func TestPatcherCrashDuringPatchDynamicConflict(t *testing.T) {
 func TestPatcherCrashDuringPatchDynamic(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, crashDynamicFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, crashDynamicFile, dir, "temp3", patchDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }
@@ -370,7 +383,7 @@ func TestPatcherCrashDuringPatchDynamic(t *testing.T) {
 func TestPatcherCrashDuringPatchSymlinks(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, crashSymlinksFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, crashSymlinksFile, dir, "temp3", patchDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }
@@ -378,7 +391,7 @@ func TestPatcherCrashDuringPatchSymlinks(t *testing.T) {
 func TestPatcherCrashDuringSwap(t *testing.T) {
 	dir, dataDir, patchDir, diffDir := prepareNextTest(t)
 
-	test.RequireExtractedFixture(t, patchedBuildFile, dir, "temp3", patchDir)
+	requireExtractedFixture(t, patchedBuildFile, dir, "temp3", patchDir)
 
 	swappedDir := dataDir + ".swap-" + filepath.Base(patchDir)
 	if err := test.OS.Rename(dataDir, swappedDir); err != nil {
@@ -398,7 +411,7 @@ func TestPatcherCrashDuringSwap2(t *testing.T) {
 		return
 	}
 
-	test.RequireExtractedFixture(t, patchedBuildFile, dir, "temp3", dataDir)
+	requireExtractedFixture(t, patchedBuildFile, dir, "temp3", dataDir)
 
 	patchAndAssert(t, dataDir, patchDir, diffDir)
 }

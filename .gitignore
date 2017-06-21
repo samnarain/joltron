@@ -1,5 +1,6 @@
 joltron
 debug
+extract/test-dir/
 patcher/test-dir/
 launcher/test-dir/
 binarydiff/test-dir/

@@ -27,6 +27,9 @@ type UpdateMetadata struct {
 
 	// DataDir is only used internally by patcher to hold the relative data dir name to use (depending on SideBySide)
 	DataDir string
+
+	// PlatformURL, same as DataDir is only used internally by patcher to hold the platform url relevant to this metadata request/response
+	PlatformURL string
 }
 
 // BuildMetadata contains information about a build's structure so it could be validated for integrity.
@@ -76,6 +79,7 @@ type Info struct {
 	Dir          string   `json:"dir"`
 	GameUID      string   `json:"uid"`
 	ArchiveFiles []string `json:"archiveFiles,omitempty"`
+	PlatformURL  string   `json:"platformUrl,omitempty"`
 }
 
 // LaunchOptions has information about how to launch the game.
@@ -97,6 +101,7 @@ type PatchInfo struct {
 	GameUID      string   `json:"uid"`
 	IsDirty      bool     `json:"isDirty"`
 	DynamicFiles []string `json:"dynamicFiles,omitempty"`
+	PlatformURL  string   `json:"platformUrl,omitempty"`
 
 	// We freeze the following info which is given from the arguments or platform url so we can continue patching
 	// without having to refetch that info. This allows us to finish a patch operation even if the build is no longer valid.

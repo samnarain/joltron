@@ -2,6 +2,7 @@ package patcher
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -33,6 +34,8 @@ type Patch struct {
 	os OS.OS
 
 	UpdateMetadata *data.UpdateMetadata
+	authToken      string
+	metadata       string
 	Dir            string
 	Manual         bool
 	dataDir        string
@@ -234,6 +237,16 @@ func (p *Patch) Result() error {
 // State gets the current patcher state
 func (p *Patch) State() State {
 	return p.state
+}
+
+// SetAuthToken sets the auth token for the next time metadata is fetched
+func (p *Patch) SetAuthToken(authToken string) {
+	p.authToken = authToken
+}
+
+// SetExtraMetadata sets the extra metadata for the next time metadata is fetched
+func (p *Patch) SetExtraMetadata(metadata string) {
+	p.metadata = metadata
 }
 
 func newPatcher(resumable *concurrency.Resumable, installing bool, dir string, manual bool, jsonNet *jsonnet.Listener, updateMetadata *data.UpdateMetadata, os2 OS.OS) (*Patch, error) {
@@ -511,6 +524,7 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 					Dir:          p.manifest.PatchInfo.Dir,
 					GameUID:      p.manifest.PatchInfo.GameUID,
 					ArchiveFiles: newBuildFiles,
+					PlatformURL:  p.manifest.PatchInfo.PlatformURL,
 				}
 
 				p.manifest.LaunchOptions = p.manifest.PatchInfo.LaunchOptions
@@ -653,9 +667,10 @@ func (p *Patch) handlePreviousPatch() error {
 	// This is so that we can continue the operation after discarding the old patch info as if it never existed:
 	// The manifest is expected to exist in fs without the patch info, and in-memory should contain the new installation/update target.
 	p.manifest.PatchInfo = &data.PatchInfo{
-		Dir:     p.UpdateMetadata.DataDir,
-		GameUID: p.UpdateMetadata.GameUID,
-		IsDirty: false,
+		Dir:         p.UpdateMetadata.DataDir,
+		GameUID:     p.UpdateMetadata.GameUID,
+		IsDirty:     false,
+		PlatformURL: p.UpdateMetadata.PlatformURL,
 
 		DownloadSize:     p.UpdateMetadata.RemoteSize,
 		DownloadChecksum: p.UpdateMetadata.Checksum,
@@ -672,6 +687,9 @@ func (p *Patch) handlePreviousPatch() error {
 }
 
 func (p *Patch) download() error {
+
+	wasPaused := false
+
 	// When a patch is paused the download session is actually terminated compeltely, but we want to resume operation later.
 	// So while the patch context is not canceled, we run download in a loop.
 	// We break on errors that are not raised by cancelling the download to avoid retrying forever
@@ -680,16 +698,45 @@ func (p *Patch) download() error {
 			return context.Canceled
 		}
 
-		// TODO: request new metadata if called using a platform url
+		if wasPaused && p.manifest.PatchInfo.PlatformURL != "" {
+			newMetadata, err := game.GetMetadata(p.manifest.Info.GameUID, p.manifest.PatchInfo.GameUID, p.manifest.PatchInfo.PlatformURL, p.authToken, p.metadata)
+			if err != nil {
+				return errors.New("Couldn't fetch new metadata: " + err.Error())
+			}
+
+			// We need to compare the received metadata to the metadata we've been working with so far.
+			// To do this, we serialize both to json and compare, but before we can do that we need to ignore
+			// the bits we expect to be different, like URL.
+			// So we save them aside first, then overwrite them with the old metadata fields.
+			newURL := newMetadata.URL
+			newMetadata.URL = p.UpdateMetadata.URL
+			newMetadata.SideBySide = p.UpdateMetadata.SideBySide
+			newMetadata.DataDir = p.UpdateMetadata.DataDir
+			newMetadata.PlatformURL = p.UpdateMetadata.PlatformURL
+
+			newMetadataBytes, err := json.Marshal(newMetadata)
+			oldMetadataBytes, err2 := json.Marshal(p.UpdateMetadata)
+			if err != nil || err2 != nil {
+				return errors.New("Failed to compare metadatas: " + err.Error())
+			}
+			log.Printf("New metadata: %s\nOld metadata: %s\n", string(newMetadataBytes), string(oldMetadataBytes))
+			if string(newMetadataBytes) != string(oldMetadataBytes) {
+				return errors.New("New metadata differs from the one we're in the middle of updating to. Aborting")
+			}
+
+			p.UpdateMetadata.URL = newURL
+		}
 		p.downloader = download.NewDownload(p.Resumable, p.UpdateMetadata.URL, filepath.Join(p.Dir, ".tempDownload"), p.UpdateMetadata.Checksum, p.UpdateMetadata.RemoteSize, p.os, func(downloaded, total int64, sample *stream.Sample) {
 			if p.jsonNet != nil {
-				p.jsonNet.Broadcast(&outgoing.OutMsgProgress{
-					Type:    "download",
-					Current: downloaded,
-					Total:   total,
-					Percent: int(float64(downloaded) / float64(total) * 100),
-					Sample:  sample,
-				})
+				go func() {
+					p.jsonNet.Broadcast(&outgoing.OutMsgProgress{
+						Type:    "download",
+						Current: downloaded,
+						Total:   total,
+						Percent: int(float64(downloaded) / float64(total) * 100),
+						Sample:  sample,
+					})
+				}()
 			}
 		})
 		<-p.downloader.Done()
@@ -698,6 +745,7 @@ func (p *Patch) download() error {
 		// If our context is canceled, it may be due to parent canceling or pausing.
 		// If its just a pause we want to try again, otherwise we bubble context.Canceled back out
 		if result == context.Canceled {
+			wasPaused = true
 			continue
 		}
 
@@ -909,17 +957,19 @@ func (p *Patch) ensureManifest() error {
 		manifest := &data.Manifest{
 			Version: data.ManifestVersion,
 			Info: &data.Info{
-				Dir:     p.UpdateMetadata.DataDir,
-				GameUID: p.UpdateMetadata.GameUID,
+				Dir:         p.UpdateMetadata.DataDir,
+				GameUID:     p.UpdateMetadata.GameUID,
+				PlatformURL: p.UpdateMetadata.PlatformURL,
 			},
 			LaunchOptions:  launchOptions,
 			OS:             p.UpdateMetadata.OS,
 			Arch:           p.UpdateMetadata.Arch,
 			IsFirstInstall: true,
 			PatchInfo: &data.PatchInfo{
-				Dir:     p.UpdateMetadata.DataDir,
-				GameUID: p.UpdateMetadata.GameUID,
-				IsDirty: false,
+				Dir:         p.UpdateMetadata.DataDir,
+				GameUID:     p.UpdateMetadata.GameUID,
+				IsDirty:     false,
+				PlatformURL: p.UpdateMetadata.PlatformURL,
 
 				DownloadSize:     p.UpdateMetadata.RemoteSize,
 				DownloadChecksum: p.UpdateMetadata.Checksum,
@@ -952,9 +1002,10 @@ func (p *Patch) ensureManifest() error {
 		if p.manifest.PatchInfo == nil {
 			log.Println("Setting new patch info")
 			p.manifest.PatchInfo = &data.PatchInfo{
-				Dir:     p.UpdateMetadata.DataDir,
-				GameUID: p.UpdateMetadata.GameUID,
-				IsDirty: false,
+				Dir:         p.UpdateMetadata.DataDir,
+				GameUID:     p.UpdateMetadata.GameUID,
+				IsDirty:     false,
+				PlatformURL: p.UpdateMetadata.PlatformURL,
 
 				DownloadSize:     p.UpdateMetadata.RemoteSize,
 				DownloadChecksum: p.UpdateMetadata.Checksum,

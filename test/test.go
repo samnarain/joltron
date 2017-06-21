@@ -9,8 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"sync"
+
 	"github.com/gamejolt/joltron/download"
-	"github.com/gamejolt/joltron/extract"
 	_OS "github.com/gamejolt/joltron/os"
 )
 
@@ -69,43 +70,50 @@ func DownloadFixture(fixture, checksum string) chan error {
 	return ch
 }
 
+// DoOrDie takes an operation in the form of a channel that will send an error on failure, and will panic if it receives one.
+// It can work in parallel by passing in a wait group. Pass in nil for no parallelism
+func DoOrDie(ch <-chan error, wg *sync.WaitGroup) *sync.WaitGroup {
+
+	// If no wait group is passed, make a new one.
+	if wg == nil {
+		wg = &sync.WaitGroup{}
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := <-ch; err != nil {
+			panic(err.Error())
+		}
+	}()
+
+	return wg
+}
+
 // RequireFixture copies a downloaded fixture by name into the expected dir and name.
-func RequireFixture(t *testing.T, fixture, dir, name string) {
+func RequireFixture(tb testing.TB, fixture, dir, name string) {
 	prepareFixtures()
 
 	log.Println(filepath.Join(fixtureDir, fixture))
 	reader, err := os.Open(filepath.Join(fixtureDir, fixture))
 	if err != nil {
-		panic(fmt.Sprintf("Could not require fixture1: %s", err.Error()))
+		tb.Fatal(fmt.Sprintf("Could not require fixture1: %s", err.Error()))
 	}
 	defer reader.Close()
 
 	if err = os.MkdirAll(dir, 0755); err != nil {
-		panic(fmt.Sprintf("Could not require fixture2: %s", err.Error()))
+		tb.Fatal(fmt.Sprintf("Could not require fixture2: %s", err.Error()))
 	}
 
 	writer, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_WRONLY, 0755)
 	if err != nil {
-		panic(fmt.Sprintf("Could not require fixture3: %s", err.Error()))
+		tb.Fatal(fmt.Sprintf("Could not require fixture3: %s", err.Error()))
 	}
 	defer writer.Close()
 
 	_, err = io.Copy(writer, reader)
 	if err != nil {
-		panic(fmt.Sprintf("Could not require fixture4: %s", err.Error()))
-	}
-}
-
-// RequireExtractedFixture works like RequireFixture, only it extracts it too.
-func RequireExtractedFixture(t *testing.T, fixture, dir, archive, extractTo string) {
-	RequireFixture(t, fixture, dir, archive)
-	e, err := extract.NewExtraction(nil, filepath.Join(dir, archive), extractTo, OS, nil)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	<-e.Done()
-	if e.Result().Err != nil {
-		t.Fatal(e.Result().Err.Error())
+		tb.Fatal(fmt.Sprintf("Could not require fixture4: %s", err.Error()))
 	}
 }
 
@@ -114,13 +122,22 @@ func RequireExtractedFixture(t *testing.T, fixture, dir, archive, extractTo stri
 func PrepareNextTest(t *testing.T) (port uint16, dir string) {
 	// t.Parallel()
 
+	return prepareNextTest(t)
+}
+
+// PrepareNextBenchTest works just like PrepareNextTest only for benchmarks
+func PrepareNextBenchTest(b *testing.B) (port uint16, dir string) {
+	return prepareNextTest(b)
+}
+
+func prepareNextTest(tb testing.TB) (port uint16, dir string) {
 	port = GetNextPort()
 	dir, err := filepath.Abs(filepath.Join(Dir, fmt.Sprintf("patch-%d", port)))
 	if err != nil {
-		panic(fmt.Sprintf("Test dir could not be resolved: %s", err.Error()))
+		tb.Fatal(fmt.Sprintf("Test dir could not be resolved: %s", err.Error()))
 	}
 	if err = os.RemoveAll(dir); err != nil {
-		panic(fmt.Sprintf("Test dir could not be removed: %s", err.Error()))
+		tb.Fatal(fmt.Sprintf("Test dir could not be removed: %s", err.Error()))
 	}
 
 	return port, dir

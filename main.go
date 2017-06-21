@@ -31,6 +31,13 @@ import (
 )
 
 func main() {
+	// f, err := os.Create("./pprof")
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	// pprof.StartCPUProfile(f)
+	// defer pprof.StopCPUProfile()
+
 	c := make(chan os.Signal, 5)
 	signal.Notify(c, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGHUP)
 	go func() {
@@ -209,6 +216,7 @@ Notes:
 				if err != nil {
 					return nil, err
 				}
+				updateMetadata.PlatformURL = *platformURLArg
 
 				if updateMetadata.SideBySide == nil {
 					updateMetadata.SideBySide = &sideBySide
@@ -832,6 +840,15 @@ func run(net *jsonnet.Listener, dir string, args []string) error {
 						break
 					}
 
+					if cmd.ExtraData != nil && len(cmd.ExtraData) != 0 {
+						if authToken, ok := cmd.ExtraData["authToken"]; ok {
+							_patch.SetAuthToken(authToken)
+						}
+						if extraMetadata, ok := cmd.ExtraData["extraMetadata"]; ok {
+							_patch.SetExtraMetadata(extraMetadata)
+						}
+					}
+
 					_patch.Resume()
 					msg.Respond(&outgoing.OutMsgResult{
 						Success: true,
@@ -928,6 +945,14 @@ func update(net *jsonnet.Listener, dir string, updateMetadata *data.UpdateMetada
 							Message: "paused",
 						})
 					case "resume":
+						if cmd.ExtraData != nil && len(cmd.ExtraData) != 0 {
+							if authToken, ok := cmd.ExtraData["authToken"]; ok {
+								patch.SetAuthToken(authToken)
+							}
+							if extraMetadata, ok := cmd.ExtraData["extraMetadata"]; ok {
+								patch.SetExtraMetadata(extraMetadata)
+							}
+						}
 						patch.Resume()
 						msg.Respond(&outgoing.OutMsgResult{
 							Success: true,
