@@ -94,13 +94,13 @@ Notes:
 
 	if *versionArg {
 		fmt.Println("joltron", goopt.Version)
-		os.Exit(0)
+		finishRun(nil, 0)
 	}
 
 	if *mutexArg != "" {
 		if err := OS.CreateMutex(*mutexArg); err != nil {
 			fmt.Fprintf(os.Stderr, "Could not acquire the %s mutex\n", *mutexArg)
-			os.Exit(1)
+			finishRun(nil, 1)
 		}
 	}
 
@@ -111,7 +111,7 @@ Notes:
 		_dir, err := osext.ExecutableFolder()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Couldn't figure out executable directory: "+err.Error())
-			os.Exit(2)
+			finishRun(nil, 1)
 		}
 		dir = _dir
 	}
@@ -120,7 +120,7 @@ Notes:
 	manifest, net, dir, err := validateCommonOptions(*portArg, dir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err.Error())
-		os.Exit(2)
+		finishRun(nil, 1)
 	}
 
 	// What action to take for this execution.
@@ -144,7 +144,7 @@ Notes:
 
 	if cmd == "help" {
 		fmt.Println(goopt.Usage())
-		os.Exit(1)
+		finishRun(net, 1)
 	}
 
 	if *symbioteArg {
@@ -306,8 +306,18 @@ Notes:
 			Payload: err.Error(),
 		})
 
-		os.Exit(2)
+		finishRun(net, 1)
 	}
+
+	finishRun(net, 0)
+}
+
+func finishRun(net *jsonnet.Listener, exitCode int) {
+	<-time.After(1 * time.Second)
+	if net != nil {
+		net.Close()
+	}
+	os.Exit(exitCode)
 }
 
 func waitForConnection(net *jsonnet.Listener, timeout time.Duration) <-chan error {
@@ -360,8 +370,7 @@ func symbiote(net *jsonnet.Listener) {
 			// Otherwise wait for a new connection
 			s, err := net.OnConnection()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Could not subscribe to net connection events: %s\n", err.Error())
-				os.Exit(1)
+				panic(fmt.Sprintf("Could not subscribe to net connection events: %s\n", err.Error()))
 			}
 
 			tmp := <-s.Next()
