@@ -78,9 +78,9 @@ func WriteManifest(manifest *data.Manifest, dir string, os2 OS.OS) error {
 }
 
 // IsGameRunning checks if the game installed in the given dir is currently running. The check may take up to the duration in checkDuration
-func IsGameRunning(dir string, checkDuration time.Duration) bool {
+func IsGameRunning(myPort uint16, dir string, checkDuration time.Duration) bool {
 	manifest, err := GetManifest(dir, nil)
-	if err != nil || manifest.PlayingInfo == nil || manifest.RunningInfo == nil {
+	if err != nil || manifest.PlayingInfo == nil || manifest.RunningInfo == nil || myPort == manifest.RunningInfo.Port {
 		return false
 	}
 
@@ -97,9 +97,9 @@ func IsGameRunning(dir string, checkDuration time.Duration) bool {
 }
 
 // IsRunnerRunning checks if the game installed in the given dir is currently running. The check may take up to the duration in checkDuration
-func IsRunnerRunning(dir string, checkDuration time.Duration) bool {
+func IsRunnerRunning(myPort uint16, dir string, checkDuration time.Duration) bool {
 	manifest, err := GetManifest(dir, nil)
-	if err != nil || manifest.RunningInfo == nil {
+	if err != nil || manifest.RunningInfo == nil || myPort == manifest.RunningInfo.Port {
 		return false
 	}
 
@@ -160,7 +160,7 @@ type Metadata struct {
 	GameUID       string `json:"gameUID"`
 	URL           string `json:"url"`
 	Checksum      string `json:"checksum"`
-	RemoteSize    int64  `json:"remoteSize"`
+	RemoteSize    int64  `json:"remoteSize,omitempty"`
 	RemoteSizeStr string `json:"remoteSizeStr,omitempty"` // Some languages can't express large enough integers for big files, so also accept it as a string
 	SideBySide    *bool  `json:"sideBySide"`              // See comment in UpdateMetadata for why this is *bool
 	OS            string `json:"os"`
@@ -168,7 +168,7 @@ type Metadata struct {
 	Executable    string `json:"executable"`
 
 	OldBuildMetadata *data.BuildMetadata `json:"oldBuildMetadata,omitempty"`
-	NewBuildMetadata *data.BuildMetadata `json:"oldBuildMetadata,omitempty"`
+	NewBuildMetadata *data.BuildMetadata `json:"newBuildMetadata,omitempty"`
 	DiffMetadata     *data.DiffMetadata  `json:"diffMetadata,omitempty"`
 }
 
@@ -202,11 +202,12 @@ func GetMetadata(gameUID, nextGameUID, platformURL, authToken, metadataStr strin
 	}
 
 	postData := map[string][]string{
-		"gameUID":   []string{gameUID},
-		"os":        []string{os},
-		"arch":      []string{arch},
-		"authToken": []string{authToken},
-		"metadata":  []string{metadataStr},
+		"gameUID":    []string{gameUID},
+		"os":         []string{os},
+		"arch":       []string{arch},
+		"authToken":  []string{authToken},
+		"metadata":   []string{metadataStr},
+		"binaryDiff": []string{"no"},
 	}
 	if nextGameUID != "" {
 		postData["nextGameUID"] = []string{nextGameUID}

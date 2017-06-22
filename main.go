@@ -1,5 +1,6 @@
 package main
 
+// TODO: use gopkg wherever possible
 import (
 	"errors"
 	"fmt"
@@ -74,7 +75,7 @@ func main() {
 	versionArg := goopt.Flag([]string{"-v", "--version"}, []string{}, "Displays the version", "")
 
 	goopt.Version = project.Version
-	goopt.Summary = "joltron [options] (run [args] | install | uninstall)"
+	goopt.Summary = "joltron [options] (run [args] | install | uninstall | noop)"
 	oldUsage := goopt.Usage
 	goopt.Usage = func() string {
 		return oldUsage() + `
@@ -146,7 +147,7 @@ Notes:
 
 	// Any other operation besides "help" and "version" (both should be handled by now) mutates the game data in some way.
 	// Therefore we should reject the operation if we're already in the middle of an operation.
-	if game.IsRunnerRunning(dir, 3*time.Second) {
+	if game.IsRunnerRunning(net.Port(), dir, 3*time.Second) {
 		fmt.Fprintln(os.Stderr, "Game is already being managed by another runner instance")
 		os.Exit(2)
 	}
@@ -260,6 +261,16 @@ Notes:
 
 		case "uninstall":
 			return uninstall(net, dir), nil
+
+		case "noop":
+			if !*symbioteArg {
+				return nil, errors.New("Noop operation has to have symbiote specified. It's meant to be used to idle while holding a mutex")
+			}
+
+			// Idle forever
+			make(chan bool) <- true
+
+			return nil, nil
 
 		default:
 			return nil, fmt.Errorf("%q is not a valid command. See \"joltron help\" for more info", cmd)

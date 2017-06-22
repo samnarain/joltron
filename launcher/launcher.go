@@ -8,11 +8,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"time"
 
 	"sync"
 
+	plist "github.com/DHowett/go-plist"
 	"github.com/gamejolt/joltron/broadcast"
 	"github.com/gamejolt/joltron/game"
 	"github.com/gamejolt/joltron/game/data"
@@ -320,11 +322,8 @@ func LaunchDarwin(executable string, args []string, os2 OS.OS) (*exec.Cmd, error
 		return nil, errors.New("That doesn't look like a valid Mac OS X bundle. Expecting .app folder")
 	}
 
-	cmd := exec.Command("open", executable)
-	return cmd, nil
-
-	/*plistPath := filepath.Join(executable, "Contents", "Info.plist")
-	plistStat, err := l.os.Stat(plistPath)
+	plistPath := filepath.Join(executable, "Contents", "Info.plist")
+	plistStat, err := os2.Lstat(plistPath)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to stat the plist file at %s: %s", plistPath, err.Error())
 	}
@@ -333,7 +332,7 @@ func LaunchDarwin(executable string, args []string, os2 OS.OS) (*exec.Cmd, error
 		return nil, fmt.Errorf("That doesn't look like a valid Mac OS X bundle. Info.plist at %s isn't a valid file", plistPath)
 	}
 
-	bytes, err := l.os.IOUtilReadFile(plistPath)
+	bytes, err := os2.IOUtilReadFile(plistPath)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read the plist file at %s", plistPath)
 	}
@@ -350,7 +349,9 @@ func LaunchDarwin(executable string, args []string, os2 OS.OS) (*exec.Cmd, error
 	}
 	bundleExecutable := rBundleVal.String()
 	log.Printf("Please %s\n", bundleExecutable)
-	return nil, nil*/
+
+	cmd := exec.Command("open", executable)
+	return cmd, nil
 }
 
 // InstanceCount returns the number of currently active child instances
