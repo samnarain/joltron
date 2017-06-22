@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
@@ -336,19 +335,35 @@ func LaunchDarwin(executable string, args []string, os2 OS.OS) (*exec.Cmd, error
 	if err != nil {
 		return nil, fmt.Errorf("Failed to read the plist file at %s", plistPath)
 	}
+	log.Println("Plist:\n" + string(bytes))
 
-	var val reflect.Value
+	var val interface{}
 	_, err = plist.Unmarshal(bytes, &val)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to parse Info.plist at %s: %s", plistPath, err.Error())
 	}
 
-	rBundleVal := val.MapIndex(reflect.ValueOf("CFBundleExecutable"))
-	if !rBundleVal.IsValid() || rBundleVal.Kind() != reflect.String {
-		return nil, fmt.Errorf("The CFBundleExecutable field in Info.plist at %s is not a string", plistPath)
+	var valMap map[string]interface{}
+	switch val.(type) {
+	case map[string]interface{}:
+		valMap = val.(map[string]interface{})
+	default:
+		return nil, errors.New("Plist is invalid. Expected a dictionary type")
 	}
-	bundleExecutable := rBundleVal.String()
-	log.Printf("Please %s\n", bundleExecutable)
+
+	bundleExecutable, ok := valMap["CFBundleExecutable"]
+	if !ok {
+		return nil, errors.New("Plist is invalid. Missing the CFBundleExecutable field")
+	}
+
+	switch bundleExecutable.(type) {
+	case string:
+		if err := os2.Chmod(filepath.Join(executable, "Contents", "MacOS", bundleExecutable.(string)), 0755); err != nil {
+			return nil, errors.New("Failed to make the app executable: " + err.Error())
+		}
+	default:
+		return nil, errors.New("Plist is invalid. Expected CFBundleExecutable field to be a string")
+	}
 
 	cmd := exec.Command("open", executable)
 	return cmd, nil
