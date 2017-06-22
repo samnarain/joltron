@@ -49,6 +49,8 @@ func main() {
 	}()
 	defer launcher.KillAll()
 
+	log.Printf("Starting %v\n", os.Args)
+
 	portArg := goopt.IntWithLabel([]string{"--port"}, 0, "PORT", "The port the runner should communicate on. If not specified, one will be chosen randomly")
 	dirArg := goopt.StringWithLabel([]string{"--dir"}, "", "DIR", "The directory the runner should work in")
 
@@ -145,28 +147,6 @@ Notes:
 		os.Exit(1)
 	}
 
-	// Any other operation besides "help" and "version" (both should be handled by now) mutates the game data in some way.
-	// Therefore we should reject the operation if we're already in the middle of an operation.
-	if game.IsRunnerRunning(net.Port(), dir, 3*time.Second) {
-		fmt.Fprintln(os.Stderr, "Game is already being managed by another runner instance")
-		os.Exit(2)
-	}
-
-	// If the manifest already exists, set running info on it.
-	// The only case the manifest will not exist is if we're doing a fresh install
-	// In that case, the patcher will set the running info on it when it creates it for the first time.
-	if manifest != nil {
-		manifest.RunningInfo = &data.RunningInfo{
-			Pid:   os.Getpid(),
-			Port:  net.Port(),
-			Since: time.Now().Unix(),
-		}
-		if err = game.WriteManifest(manifest, dir, nil); err != nil {
-			fmt.Fprintln(os.Stderr, "Failed to update game manifest with running info: "+err.Error())
-			os.Exit(2)
-		}
-	}
-
 	if *symbioteArg {
 		symbiote(net)
 	}
@@ -178,6 +158,27 @@ Notes:
 	}
 
 	result, err := func() (error, error) {
+
+		// Any other operation besides "help" and "version" (both should be handled by now) mutates the game data in some way.
+		// Therefore we should reject the operation if we're already in the middle of an operation.
+		if game.IsRunnerRunning(net.Port(), dir, 3*time.Second) {
+			return nil, errors.New("Game is already being managed by another runner instance")
+		}
+
+		// If the manifest already exists, set running info on it.
+		// The only case the manifest will not exist is if we're doing a fresh install
+		// In that case, the patcher will set the running info on it when it creates it for the first time.
+		if manifest != nil {
+			manifest.RunningInfo = &data.RunningInfo{
+				Pid:   os.Getpid(),
+				Port:  net.Port(),
+				Since: time.Now().Unix(),
+			}
+			if err = game.WriteManifest(manifest, dir, nil); err != nil {
+				return nil, errors.New("Failed to update game manifest with running info: " + err.Error())
+			}
+		}
+
 		switch cmd {
 		case "run":
 			return run(net, dir, runArgs), nil
@@ -314,6 +315,13 @@ func waitForConnection(net *jsonnet.Listener, timeout time.Duration) <-chan erro
 	go func() {
 		defer close(ch)
 
+		// If we already have a connection, do nothing
+		if net.ConnectionCount() != 0 {
+			ch <- nil
+			return
+		}
+
+		// Otherwise wait for a new connection
 		s, err := net.OnConnection()
 		if err != nil {
 			ch <- err
@@ -341,19 +349,30 @@ func waitForConnection(net *jsonnet.Listener, timeout time.Duration) <-chan erro
 
 func symbiote(net *jsonnet.Listener) {
 	go func() {
-		s, err := net.OnConnection()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Could not subscribe to net connection events: %s\n", err.Error())
-			os.Exit(1)
+		var conn *jsonnet.Connection
+
+		// If we already have a connection, use it
+		conns := net.Connections()
+		if len(conns) != 0 {
+			// Connection at position 0 is the first connection
+			conn = conns[0]
+		} else {
+			// Otherwise wait for a new connection
+			s, err := net.OnConnection()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Could not subscribe to net connection events: %s\n", err.Error())
+				os.Exit(1)
+			}
+
+			tmp := <-s.Next()
+			s.Close()
+			if tmp == nil {
+				return
+			}
+			conn = tmp.(*jsonnet.Connection)
 		}
 
-		conn := <-s.Next()
-		s.Close()
-		if conn == nil {
-			return
-		}
-
-		<-conn.(*jsonnet.Connection).Done()
+		<-conn.Done()
 		panic("Symbiote host connection closed, aborting")
 	}()
 }

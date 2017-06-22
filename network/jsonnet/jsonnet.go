@@ -79,6 +79,19 @@ func (l *Listener) Port() uint16 {
 	return l.port
 }
 
+// Connections return the current connections of the listeners.
+// It returns a copy of the connections slice
+func (l *Listener) Connections() []*Connection {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	conns := []*Connection{}
+	for _, conn := range l.connections {
+		conns = append(conns, conn)
+	}
+	return conns
+}
+
 // ConnectionCount returns the number of connections this jsonnet currently holds
 func (l *Listener) ConnectionCount() int {
 	return len(l.connections)
