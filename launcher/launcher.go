@@ -365,7 +365,7 @@ func LaunchDarwin(executable string, args []string, os2 OS.OS) (*exec.Cmd, error
 		return nil, errors.New("Plist is invalid. Expected CFBundleExecutable field to be a string")
 	}
 
-	cmd := exec.Command("open", executable)
+	cmd := exec.Command("open", "-W", executable)
 	return cmd, nil
 }
 
