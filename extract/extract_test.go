@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -60,7 +60,7 @@ func TestBenchmarkOsGzip(t *testing.T) {
 	now := time.Now()
 
 	for i := 0; i < 100; i++ {
-		cmd := exec.Command("tar", "-xzf", path.Join(dir, ".tempDownload"), "--warning=none", "-C", dir)
+		cmd := exec.Command("tar", "-xzf", filepath.Join(dir, ".tempDownload"), "--warning=none", "-C", dir)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatal(err.Error() + ":" + string(output))
@@ -91,7 +91,7 @@ func TestBenchmarkOsXz(t *testing.T) {
 	now := time.Now()
 
 	for i := 0; i < 100; i++ {
-		cmd := exec.Command("tar", "-xJf", path.Join(dir, ".tempDownload"), "--warning=none", "-C", dir)
+		cmd := exec.Command("tar", "-xJf", filepath.Join(dir, ".tempDownload"), "--warning=none", "-C", dir)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatal(err.Error() + ":" + string(output))
@@ -110,7 +110,7 @@ func benchmarkExtract(t *testing.T, dir, fixture string) {
 	test.RequireFixture(t, fixture, dir, ".tempDownload")
 
 	for i := 0; i < 100; i++ {
-		extract, err := NewExtraction(nil, path.Join(dir, ".tempDownload"), dir, test.OS, nil)
+		extract, err := NewExtraction(nil, filepath.Join(dir, ".tempDownload"), dir, test.OS, nil)
 		if err != nil {
 			t.Fatal(err.Error())
 		}

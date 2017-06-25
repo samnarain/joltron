@@ -77,7 +77,7 @@ func main() {
 	versionArg := goopt.Flag([]string{"-v", "--version"}, []string{}, "Displays the version", "")
 
 	goopt.Version = project.Version
-	goopt.Summary = "joltron [options] (run [args] | install | uninstall | noop)"
+	goopt.Summary = "joltron [options] (run [args] | install | uninstall | rollback | noop)"
 	oldUsage := goopt.Usage
 	goopt.Usage = func() string {
 		return oldUsage() + `
@@ -262,6 +262,9 @@ Notes:
 
 		case "uninstall":
 			return uninstall(net, dir), nil
+
+		case "rollback":
+			return rollback(net, dir), nil
 
 		case "noop":
 			if !*symbioteArg {
@@ -1086,13 +1089,6 @@ func uninstall(net *jsonnet.Listener, dir string) error {
 					break
 				}
 
-				if patch == nil {
-					msg.Respond(&outgoing.OutMsgResult{
-						Success: false,
-						Error:   "Not ready yet, try again in a sec",
-					})
-				}
-
 				switch msg.Payload.(type) {
 				case *incoming.InMsgControlCommand:
 					cmd := msg.Payload.(*incoming.InMsgControlCommand)
@@ -1163,6 +1159,101 @@ func uninstall(net *jsonnet.Listener, dir string) error {
 
 	net.Broadcast(&outgoing.OutMsgUpdate{
 		Message: "uninstallFinished",
+	})
+	return nil
+}
+
+func rollback(net *jsonnet.Listener, dir string) error {
+	net.Broadcast(&outgoing.OutMsgUpdate{
+		Message: "rollbackBegin",
+		Payload: dir,
+	})
+
+	patch, err := patcher.NewRollback(nil, dir, net, nil)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for {
+			select {
+			case <-patch.Done():
+				break
+			case msg, open := <-net.IncomingMessages:
+				if !open {
+					break
+				}
+
+				switch msg.Payload.(type) {
+				case *incoming.InMsgControlCommand:
+					cmd := msg.Payload.(*incoming.InMsgControlCommand)
+					switch cmd.Command {
+					case "pause":
+						patch.Pause()
+						msg.Respond(&outgoing.OutMsgResult{
+							Success: true,
+						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "paused",
+						})
+					case "resume":
+						patch.Resume()
+						msg.Respond(&outgoing.OutMsgResult{
+							Success: true,
+						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "resumed",
+						})
+					case "cancel":
+						patch.Cancel()
+						msg.Respond(&outgoing.OutMsgResult{
+							Success: true,
+						})
+						net.Broadcast(&outgoing.OutMsgUpdate{
+							Message: "canceled",
+						})
+					default:
+						msg.Respond(&outgoing.OutMsgResult{
+							Success: false,
+							Error:   "Unknown command",
+						})
+					}
+				case *incoming.InMsgState:
+					cmd := msg.Payload.(*incoming.InMsgState)
+					manifest, _ := game.GetManifest(dir, nil)
+					if manifest != nil && !cmd.IncludePatchInfo {
+						manifest.PatchInfo = nil
+					}
+					msg.Respond(&outgoing.OutMsgState{
+						Version:      project.Version,
+						State:        "rolling-back",
+						PatcherState: int(patch.State()),
+						Pid:          os.Getpid(),
+						IsRunning:    false,
+						IsPaused:     !patch.IsRunning(),
+						Manifest:     manifest,
+					})
+				default:
+					msg.Respond(&outgoing.OutMsgResult{
+						Success: false,
+						Error:   "Invalid input",
+					})
+				}
+			}
+		}
+	}()
+
+	<-patch.Done()
+	if err = patch.Result(); err != nil {
+		net.Broadcast(&outgoing.OutMsgUpdate{
+			Message: "rollbackFailed",
+			Payload: err.Error(),
+		})
+		return err
+	}
+
+	net.Broadcast(&outgoing.OutMsgUpdate{
+		Message: "rollbackFinished",
 	})
 	return nil
 }

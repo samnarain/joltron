@@ -88,6 +88,9 @@ const (
 	// StateUninstall is the state for uninstalling
 	StateUninstall
 
+	// StateRollback is the state for rolling back
+	StateRollback
+
 	// StateFinished is the state for a finished operation
 	StateFinished
 )
@@ -351,6 +354,7 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 							p.manifest.PatchInfo = nil
 
 							// We don't do setManifest here because we want to be able to refer to this operation's dataDirs and other information after we're finished.
+							// setManifest will override those with the information in the manifest.
 							// p.setManifest(p.manifest)
 						}
 
@@ -444,6 +448,7 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 				}
 
 				p.manifest.PatchInfo.DynamicFiles = dynamicFiles
+				p.manifest.PatchInfo.IsDirty = true
 				log.Printf("Dynamic files: %v\n", p.manifest.PatchInfo.DynamicFiles)
 
 				if err = p.writeManifest(); err != nil {
@@ -608,6 +613,60 @@ func NewUninstall(resumable *concurrency.Resumable, dir string, jsonNet *jsonnet
 					if err := p.os.RemoveAll(dir); err != nil {
 						return err
 					}
+				}
+
+				return nil
+			},
+		)
+		p.Finish(result)
+	}()
+
+	return p, nil
+}
+
+// NewRollback comment
+func NewRollback(resumable *concurrency.Resumable, dir string, jsonNet *jsonnet.Listener, os2 OS.OS) (*Patch, error) {
+	p, err := newPatcher(resumable, false, dir, false, jsonNet, nil, os2)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("Rolling back %s\n", p.Dir)
+	go func() {
+		result := <-concurrency.ChainResumableTasks(p,
+
+			// Signal that the patch has started processing.
+			// If the patcher was created from an already paused or canceled resumable this will not run until it is resumed.
+			func() error {
+				p.changeState(StatePreparing)
+				return nil
+			},
+
+			// Split preparation into two functions so that we can pause right after transitioning to the StatePreparing state.
+			func() error {
+				if err := p.readManifest(); err != nil {
+					return err
+				}
+
+				if p.manifest.PatchInfo != nil && p.manifest.PatchInfo.IsDirty {
+					return errors.New("Can't roll back a patch peration that has already started extracting")
+				}
+				return nil
+			},
+
+			func() error {
+				p.changeState(StateRollback)
+
+				tempDownload := filepath.Join(p.Dir, ".tempDownload")
+				log.Printf("Removing %s\n", tempDownload)
+				if err := p.os.Remove(tempDownload); err != nil && !os.IsNotExist(err) {
+					return err
+				}
+
+				// Remove the patch info from the manifest to finally abort the patch.
+				p.manifest.PatchInfo = nil
+				if err := p.writeManifest(); err != nil {
+					return err
 				}
 
 				return nil
@@ -919,7 +978,7 @@ func (p *Patch) setManifest(manifest *data.Manifest) {
 
 		// The game dir is dirty if an old patch started extracting files into it.
 		// When this happens the dynamic files list will be populated with the half extracted files from the old in-place directory.
-		p.manifest.PatchInfo.IsDirty = p.dataDir == p.newDataDir && p.manifest.PatchInfo.DynamicFiles != nil
+		// p.manifest.PatchInfo.IsDirty = p.dataDir == p.newDataDir && p.manifest.PatchInfo.DynamicFiles != nil
 	} else {
 		p.newDataDir, p.diffDir, p.tempPatchDir = "", "", ""
 	}

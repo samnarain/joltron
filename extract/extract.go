@@ -122,7 +122,9 @@ func (e *Extraction) extract(progress ProgressCallback) Result {
 	}
 	defer archiveFile.Close()
 
-	reader := bufio.NewReader(archiveFile)
+	// Make a file reader with buffer size of 32kb to match the resumable copy buffer size.
+	// This is to make pausing an extraction mid file more usable
+	reader := bufio.NewReaderSize(archiveFile, 32*1024)
 
 	archiveSize, err := fs.Filesize(e.Archive)
 	if err != nil {
@@ -174,7 +176,7 @@ func (e *Extraction) extract(progress ProgressCallback) Result {
 
 	var compressionReader io.Reader
 	if readerType == "lzma" {
-		compressionReader, err = lzma.NewReader(sampler)
+		compressionReader, err = lzma.ReaderConfig{DictCap: lzma.MinDictCap}.NewReader(sampler)
 	} else if readerType == "xz" {
 		compressionReader, err = xz.NewReader(sampler)
 	} else {
@@ -225,6 +227,7 @@ func (e *Extraction) extract(progress ProgressCallback) Result {
 			continue
 		}
 
+		log.Println("Extracting file: " + path)
 		file, err := e.os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode())
 		if err != nil {
 			return Result{err, nil}
