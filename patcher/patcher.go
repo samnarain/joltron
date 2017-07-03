@@ -448,7 +448,7 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 				}
 
 				p.manifest.PatchInfo.DynamicFiles = dynamicFiles
-				p.manifest.PatchInfo.IsDirty = true
+				p.manifest.PatchInfo.IsDirty = p.dataDir == p.newDataDir
 				log.Printf("Dynamic files: %v\n", p.manifest.PatchInfo.DynamicFiles)
 
 				if err = p.writeManifest(); err != nil {
@@ -460,6 +460,7 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 			// Extract
 			func() error {
 				p.changeState(StateExtract)
+
 				var err error
 				if p.manifest.PatchInfo.DiffMetadata == nil {
 					err = p.extract()
@@ -1074,6 +1075,21 @@ func (p *Patch) ensureManifest() error {
 				NewBuildMetadata: p.UpdateMetadata.NewBuildMetadata,
 				DiffMetadata:     p.UpdateMetadata.DiffMetadata,
 			}
+		} else if p.manifest.PatchInfo.GameUID == p.UpdateMetadata.GameUID {
+			// If the patch info exists, and it's target is the same as our current operation it means we're resuming an existing patch operation.
+			// In that case we only update the fields in the manifest that depend on resources from the server in case they changed,
+			// e.g. if a build's files changed for an existing game UID.
+			// Note: This is bad form to change a game build without changing the game UID because joltron assumes a game UID's resources are constant.
+			p.manifest.PatchInfo.PlatformURL = p.UpdateMetadata.PlatformURL
+
+			p.manifest.PatchInfo.DownloadSize = p.UpdateMetadata.RemoteSize
+			p.manifest.PatchInfo.DownloadChecksum = p.UpdateMetadata.Checksum
+			p.manifest.PatchInfo.LaunchOptions = launchOptions
+
+			p.manifest.PatchInfo.OldBuildMetadata = p.UpdateMetadata.OldBuildMetadata
+			p.manifest.PatchInfo.NewBuildMetadata = p.UpdateMetadata.NewBuildMetadata
+			p.manifest.PatchInfo.DiffMetadata = p.UpdateMetadata.DiffMetadata
+
 		}
 
 		// We set manifest here again to trigger checks for new data dir after modifying the PatchInfo

@@ -303,8 +303,8 @@ func TestMain(m *testing.M) {
 }
 
 func requireExtractedFixture(tb testing.TB, fixture, dir, archive, extractTo string) {
-	RequireFixture(tb, fixture, dir, archive)
-	e, err := extract.NewExtraction(nil, filepath.Join(dir, archive), extractTo, OS, nil)
+	test.RequireFixture(tb, fixture, dir, archive)
+	e, err := extract.NewExtraction(nil, filepath.Join(dir, archive), extractTo, test.OS, nil)
 	if err != nil {
 		tb.Fatal(err.Error())
 	}

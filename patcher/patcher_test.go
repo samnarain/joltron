@@ -304,54 +304,54 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func TestBenchmarkPatcherGzip(t *testing.T) {
-	_, dir := test.PrepareNextTest(t)
+// func TestBenchmarkPatcherGzip(t *testing.T) {
+// 	_, dir := test.PrepareNextTest(t)
 
-	updateMetadata := getUpdateMetadata("v1", bigDownloadURLGZ, bigDownloadChecksumGZ, 0, false)
-	test.RequireFixture(t, bigDownloadFileGZ, dir, ".tempDownload")
+// 	updateMetadata := getUpdateMetadata("v1", bigDownloadURLGZ, bigDownloadChecksumGZ, 0, false)
+// 	test.RequireFixture(t, bigDownloadFileGZ, dir, ".tempDownload")
 
-	now := time.Now()
+// 	now := time.Now()
 
-	for i := 0; i < 100; i++ {
-		patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-		<-patch.Done()
-		if err := patch.Result(); err != nil {
-			t.Fatal(err.Error())
-		}
+// 	for i := 0; i < 100; i++ {
+// 		patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
+// 		if err != nil {
+// 			t.Fatal(err.Error())
+// 		}
+// 		<-patch.Done()
+// 		if err := patch.Result(); err != nil {
+// 			t.Fatal(err.Error())
+// 		}
 
-		test.OS.RemoveAll(dir)
-		test.RequireFixture(t, bigDownloadFileGZ, dir, ".tempDownload")
-	}
+// 		test.OS.RemoveAll(dir)
+// 		test.RequireFixture(t, bigDownloadFileGZ, dir, ".tempDownload")
+// 	}
 
-	delta := time.Now().Sub(now).Seconds()
-	log.Printf("Delta patcher gzip: %f\n", delta)
-}
+// 	delta := time.Now().Sub(now).Seconds()
+// 	log.Printf("Delta patcher gzip: %f\n", delta)
+// }
 
-func TestBenchmarkPatcherXz(t *testing.T) {
-	_, dir := test.PrepareNextTest(t)
+// func TestBenchmarkPatcherXz(t *testing.T) {
+// 	_, dir := test.PrepareNextTest(t)
 
-	updateMetadata := getUpdateMetadata("v1", bigDownloadURL, bigDownloadChecksum, 0, false)
-	test.RequireFixture(t, bigDownloadFile, dir, ".tempDownload")
+// 	updateMetadata := getUpdateMetadata("v1", bigDownloadURL, bigDownloadChecksum, 0, false)
+// 	test.RequireFixture(t, bigDownloadFile, dir, ".tempDownload")
 
-	now := time.Now()
+// 	now := time.Now()
 
-	for i := 0; i < 100; i++ {
-		patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-		<-patch.Done()
+// 	for i := 0; i < 100; i++ {
+// 		patch, err := NewInstall(nil, dir, false, nil, updateMetadata, test.OS)
+// 		if err != nil {
+// 			t.Fatal(err.Error())
+// 		}
+// 		<-patch.Done()
 
-		test.OS.RemoveAll(dir)
-		test.RequireFixture(t, bigDownloadFile, dir, ".tempDownload")
-	}
+// 		test.OS.RemoveAll(dir)
+// 		test.RequireFixture(t, bigDownloadFile, dir, ".tempDownload")
+// 	}
 
-	delta := time.Now().Sub(now).Seconds()
-	log.Printf("Delta patcher xz: %f\n", delta)
-}
+// 	delta := time.Now().Sub(now).Seconds()
+// 	log.Printf("Delta patcher xz: %f\n", delta)
+// }
 
 func TestPatchFirstSameDir(t *testing.T) {
 	_, dir := test.PrepareNextTest(t)
@@ -1334,13 +1334,13 @@ func TestPatchExistingManualSameDirWithChildren(t *testing.T) {
 	assertWriteFile(t, dataDir, "./fDynamicCase", "test\n")
 
 	test.GetNextPort()
-	updateMetadata = getUpdateMetadata("v2", patch2Url, patch2Checksum, 0, false)
+	updateMetadata2 := getUpdateMetadata("v2", patch2Url, patch2Checksum, 0, false)
 
 	// Creating and tracking a mock launcher would make the installation halt right before extraction
 	mockLauncher := &launcher.Launcher{}
 	launcher.TrackInstance(mockLauncher)
 
-	patch, err = NewInstall(nil, dir, true, nil, updateMetadata, test.OS)
+	patch, err = NewInstall(nil, dir, true, nil, updateMetadata2, test.OS)
 	if err != nil {
 		t.Fatal(err.Error())
 	}
@@ -1349,6 +1349,24 @@ func TestPatchExistingManualSameDirWithChildren(t *testing.T) {
 	assertPatchStateTransition(t, patch, StateUpdateReady, 10*time.Second)
 	// Make sure it stays in that state and doesn't transition away
 	assertPatchStateNoTransition(t, patch, StateUpdateReady, 5*time.Second)
+
+	// The manifest shouldn't have updated yet, so we need to make sure it is correct for the old build data
+	manifest, err := game.GetManifest(dir, test.OS)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if manifest.Info.Dir != updateMetadata.DataDir ||
+		manifest.Info.GameUID != updateMetadata.GameUID ||
+		manifest.IsFirstInstall != false ||
+		manifest.PatchInfo.Dir != updateMetadata2.DataDir ||
+		manifest.PatchInfo.GameUID != updateMetadata2.GameUID ||
+
+		// This should still be false because the game hasn't actually starting extracting until after the mocked launched instance is closed.
+		manifest.PatchInfo.IsDirty != false {
+		bytes, _ := json.Marshal(manifest)
+		t.Fatalf("Game manifest is invalid:\n%s", string(bytes))
+	}
 
 	// Killing the mock launcher should remove it from track list, allowing patch to detect it and continue patching.
 	mockLauncher.Kill()
@@ -1360,7 +1378,7 @@ func TestPatchExistingManualSameDirWithChildren(t *testing.T) {
 		t.Fatalf("Expecting patch to finish. It may be stuck waiting for a signal from a child that will never arive")
 	}
 
-	assertSecondPatchState(t, updateMetadata, patch, false)
+	assertSecondPatchState(t, updateMetadata2, patch, false)
 }
 
 func TestPatchExistingManualBuildDirWithChildren(t *testing.T) {
@@ -1382,7 +1400,7 @@ func TestPatchExistingManualBuildDirWithChildren(t *testing.T) {
 	test.GetNextPort()
 	updateMetadata2 := getUpdateMetadata("v2", patch2Url, patch2Checksum, 0, true)
 
-	// Creating and tracking a mock launcher would make the installation halt right before extraction.
+	// Creating and tracking a mock launcher would not halt the installation in this case because in a build dir update it prepares and extracts everything in a new directory before pausing.
 	mockLauncher := &launcher.Launcher{}
 	launcher.TrackInstance(mockLauncher)
 
@@ -1395,6 +1413,8 @@ func TestPatchExistingManualBuildDirWithChildren(t *testing.T) {
 	assertPatchStateTransition(t, patch, StateUpdateReady, 10*time.Second)
 	// Make sure it stays in that state and doesn't transition away.
 	assertPatchStateNoTransition(t, patch, StateUpdateReady, 5*time.Second)
+
+	// TODO: verify that the patcher already went through the extraction state because this is a build dir update
 
 	// When patching in a build dir the patcher pauses after already preparing the next directory completely, so we can test the validity of the second patch state.
 	if err := patch.Result(); err != nil {
@@ -1465,7 +1485,7 @@ func TestPatchExistingManualBuildDirWithChildren(t *testing.T) {
 		manifest.PatchInfo.Dir != updateMetadata2.DataDir ||
 		manifest.PatchInfo.GameUID != updateMetadata2.GameUID ||
 
-		// This should still be false because the game hasn't actually starting extrating until after the mocked launched instance is closed.
+		// This should still be false because the directory isn't updated in a build dir operation
 		manifest.PatchInfo.IsDirty != false {
 		bytes, _ := json.Marshal(manifest)
 		t.Fatalf("Game manifest is invalid:\n%s", string(bytes))
