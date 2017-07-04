@@ -82,7 +82,9 @@ func main() {
 	goopt.Usage = func() string {
 		return oldUsage() + `
 Notes:
-  [1] Game uid is platform specific. Game Jolt's uid for example is just the package ID
+  [1] Game uid is platform specific. Game Jolt's uid for example is "packageId-buildId"
+      If it is specified during an update operation it'll update to that given game uid exactly, otherwise it'll
+	  find the latest build to update to.
   [2] For security reasons, the auth token is recommended to be short lived and usable only by the desired user.
       The runner makes no special attempts to secure it's transmission.
   [3] Mutexes are currently only supported on Windows platform.
@@ -187,11 +189,11 @@ Notes:
 			var updateMetadata *data.UpdateMetadata
 
 			gameUID := *gameArg
-			if gameUID == "" {
+			// if gameUID == "" {
 
-				// TODO get the data from the manifest
-				return nil, errors.New("Game UID must be specified")
-			}
+			// 	// TODO get the data from the manifest for standalones
+			// 	return nil, errors.New("Game UID must be specified")
+			// }
 
 			var sideBySide bool
 			if *useBuildDirsArg == true && *inPlaceArg == true {
@@ -208,10 +210,34 @@ Notes:
 			}
 
 			if *platformURLArg != "" {
-				// If we're already in the middle of a patch, finish it first.
+
+				// If nextGameUID is populated - the target of the update will be explicitly that nextGameUID one.
+				// Otherwise, the target of the update would be the latest build belonging in the given gameUID's release channel.
 				nextGameUID := ""
-				if manifest != nil && manifest.PatchInfo != nil {
-					nextGameUID = manifest.PatchInfo.GameUID
+
+				// If the manifest doesn't exist yet - it's a first installation.
+				// Note: a manifest may also exist if we're resuming a first installation from a crash, so also check the isFirstInstall field
+				// In this case get the exact game UID that was passed in and not the latest one belonging to that game's "release channel" by setting nextGameUID to gameUID.
+				if manifest == nil || manifest.IsFirstInstall {
+					if gameUID == "" {
+						return nil, errors.New("Game UID must be specified for first installations")
+					}
+					nextGameUID = gameUID
+				} else {
+					// This is commented out because we want joltron to attempt to update to a new build even if it was in the middle of a previous one.
+					// In case it can't it'll throw an update failed. This is preferrable to overriding the requested operation with a different game uid than expected.
+					// // If we're already in the middle of a patch, finish it first by setting nextGameUID to whatever is in the manifest's patch info target game UID.
+					// if manifest.PatchInfo != nil {
+					// 	nextGameUID = manifest.PatchInfo.GameUID
+					// }
+
+					// If the game UID is specified during an update operation - it is the target of the new operation
+					if gameUID != "" {
+						nextGameUID = gameUID
+					}
+
+					// Finally, set gameUID as the currently installed game uid so when requesting update metadata it knows where its updating from (atm used only by binary diffs)
+					gameUID = manifest.Info.GameUID
 				}
 
 				updateMetadata, err = game.GetMetadata(gameUID, nextGameUID, *platformURLArg, *authTokenArg, *metadataArg)

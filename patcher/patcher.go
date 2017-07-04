@@ -100,7 +100,18 @@ type StateChangeMsg struct {
 	State State
 }
 
+// State returns the current state
+func (p *Patch) State() State {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	return p.state
+}
+
 func (p *Patch) changeState(state State) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if p.state == state {
 		return
 	}
@@ -235,11 +246,6 @@ func (p *Patch) cleanup() {
 // Result comment
 func (p *Patch) Result() error {
 	return p.result
-}
-
-// State gets the current patcher state
-func (p *Patch) State() State {
-	return p.state
 }
 
 // SetAuthToken sets the auth token for the next time metadata is fetched
@@ -423,7 +429,7 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 					go func() {
 						for {
 							time.Sleep(1 * time.Second)
-							if p.state != StateUpdateReady {
+							if p.State() != StateUpdateReady {
 								break
 							}
 
@@ -487,7 +493,7 @@ func NewInstall(resumable *concurrency.Resumable, dir string, manual bool, jsonN
 					go func() {
 						for {
 							time.Sleep(1 * time.Second)
-							if p.state != StateUpdateReady {
+							if p.State() != StateUpdateReady {
 								break
 							}
 
@@ -594,7 +600,11 @@ func NewUninstall(resumable *concurrency.Resumable, dir string, jsonNet *jsonnet
 				// First we list the immediate children of the patch dir, we don't want to list recursively
 				files, err := p.os.IOUtilReadDir(p.Dir)
 				if err != nil {
-					return err
+					if os.IsNotExist(err) {
+						files = []os.FileInfo{}
+					} else {
+						return err
+					}
 				}
 
 				// Filter out all entries who aren't data directories.

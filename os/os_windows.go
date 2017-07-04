@@ -4,21 +4,33 @@ package os
 
 import (
 	"errors"
-	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/windows/registry"
 )
 
 // GetArch gets the current arch (32 or 64)
 func GetArch() (string, error) {
-	if os.Getenv("PROCESSOR_ARCHITEW6432") != "" {
+	k, err := registry.OpenKey(registry.LOCAL_MACHINE, `System\CurrentControlSet\Control\Session Manager\Environment`, registry.QUERY_VALUE)
+	if err != nil {
+		return "", err
+	}
+
+	result, _, err := k.GetStringValue("PROCESSOR_ARCHITECTURE")
+	if err != nil {
+		return "", err
+	}
+	if strings.Contains(string(result), "64") {
 		return "64", nil
 	}
 	return "32", nil
 }
 
 var (
+	// ErrNoSuchMutex is returned when trying to release a mutex that is not held by this process
 	ErrNoSuchMutex = errors.New("No such mutex")
 )
 
