@@ -7,12 +7,11 @@ jobs:
     steps:
       - checkout
       - run: go get github.com/campoy/jsonenums
-      - run: go get -v ./...
-      - run: CGO_ENABLED=0 GOOS=linux GOARCH=386 sh ./build.sh
+      - run: CGO_ENABLED=0 GOOS=linux GOARCH=386 go get -v -d ./...&& sh ./build.sh
       - run: mv ./joltron ./joltron_linux
-      - run: CGO_ENABLED=0 GOOS=darwin GOARCH=386 sh ./build.sh
+      - run: CGO_ENABLED=0 GOOS=darwin GOARCH=386 go get -v -d ./...&& sh ./build.sh
       - run: mv ./joltron ./joltron_osx
-      - run: CGO_ENABLED=0 GOOS=windows GOARCH=386 sh ./build.sh
+      - run: CGO_ENABLED=0 GOOS=windows GOARCH=386 go get -v -d ./...&& sh ./build.sh
       - run: mv ./joltron.exe ./joltron_win32.exe
       - run: ls -lah
       - store_artifacts:
